@@ -50,7 +50,7 @@ Disponível como **app desktop para macOS** (interface gráfica) ou via **termin
 ## Instalação
 
 ```bash
-./install.sh
+./scripts/install.sh
 ```
 
 Ou manualmente:
@@ -69,7 +69,7 @@ pip install -r requirements.txt
 ### App desktop (recomendado)
 
 ```bash
-./run.sh
+./scripts/run.sh
 ```
 
 Ou:
@@ -154,8 +154,9 @@ talk-system-design/
 │   └── app_icon_v2.png         # Logo do projeto
 ├── local_arch_interviewer.py   # Versão CLI (terminal)
 ├── requirements.txt
-├── install.sh
-├── run.sh
+├── scripts/
+│   ├── install.sh              # Instalação do ambiente
+│   └── run.sh                  # Inicia o app desktop
 └── README.md
 ```
 

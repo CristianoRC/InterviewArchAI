@@ -3,6 +3,9 @@
 
 set -e
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
 echo ""
 echo "======================================================"
 echo "  local-arch-interviewer — Instalação"
@@ -41,7 +44,7 @@ echo "  Próximos passos:"
 echo "  1. Abra o LM Studio e inicie o Local Server (porta 1234)"
 echo "  2. Carregue um modelo com visão (ex: qwen/qwen3-vl-8b)"
 echo "  3. Edite o SYSTEM_PROMPT em local_arch_interviewer.py"
-echo "  4. Execute: ./run.sh  (abre o app desktop)"
+echo "  4. Execute: ./scripts/run.sh  (abre o app desktop)"
 echo "     Ou via CLI: python3 local_arch_interviewer.py"
 echo "======================================================"
 echo ""
