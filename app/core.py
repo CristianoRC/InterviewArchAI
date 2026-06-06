@@ -131,6 +131,59 @@ def parar_fala() -> None:
     _afplay_proc = None
 
 
+def sintetizar_audio(texto: str) -> str | None:
+    """Sintetiza ``texto`` com edge-tts e retorna o caminho do .mp3 gerado.
+
+    Retorna None se o texto estiver vazio ou se a síntese for cancelada.
+    O chamador é responsável por apagar o arquivo após a reprodução.
+    """
+    texto_limpo = limpar_texto(texto)
+    if not texto_limpo:
+        return None
+
+    async def _sintetizar() -> str | None:
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            caminho = tmp.name
+        try:
+            communicate = edge_tts.Communicate(texto_limpo, VOICE)
+            await communicate.save(caminho)
+        except Exception:
+            if os.path.exists(caminho):
+                os.remove(caminho)
+            return None
+        return caminho
+
+    return asyncio.run(_sintetizar())
+
+
+def reproduzir_mp3(
+    caminho: str,
+    on_status: StatusCallback | None = None,
+    on_inicio: Callable[[], None] | None = None,
+    on_fim: Callable[[], None] | None = None,
+) -> None:
+    """Reproduz um arquivo .mp3 já sintetizado via ``afplay`` e o apaga ao fim."""
+    global _afplay_proc
+    _cancelar_fala.clear()
+
+    if on_status:
+        on_status("Reproduzindo áudio...")
+
+    reproduzindo = False
+    if on_inicio:
+        on_inicio()
+        reproduzindo = True
+    try:
+        _afplay_proc = subprocess.Popen(["afplay", caminho])
+        _afplay_proc.wait()
+    finally:
+        _afplay_proc = None
+        if reproduzindo and on_fim:
+            on_fim()
+        if os.path.exists(caminho):
+            os.remove(caminho)
+
+
 def falar_texto(
     texto: str,
     on_status: StatusCallback | None = None,

@@ -63,6 +63,8 @@ from app.core import (
     montar_system_prompt,
     obter_resposta_ia,
     parar_fala,
+    reproduzir_mp3,
+    sintetizar_audio,
     transcrever_audio,
     validar_servidor,
 )
@@ -915,7 +917,7 @@ class InterviewApp(QMainWindow):
     mostrar_erro = pyqtSignal(str)
     conexao_atualizada = pyqtSignal(bool, str)
     voltar_setup = pyqtSignal()
-    feedback_pronto = pyqtSignal(str)
+    feedback_pronto = pyqtSignal(str, str)
     habilitar_finalizar = pyqtSignal(bool)
     falou_detectado = pyqtSignal()
     silencio_detectado = pyqtSignal()
@@ -1405,17 +1407,28 @@ class InterviewApp(QMainWindow):
             self._retomar_topo()
             return
 
-        self.feedback_pronto.emit(texto)
+        self._set_status("Sintetizando áudio...")
+        texto_limpo = limpar_texto(texto)
+        audio_caminho = sintetizar_audio(texto_limpo) or ""
 
-        # Lê o feedback em voz alta (versão limpa, sem markdown).
-        fala = limpar_texto(texto)
-        if fala and self.entrevista_ativa:
-            self._falar_entrevistador(fala)
+        self.feedback_pronto.emit(texto_limpo, audio_caminho)
 
-    def _on_feedback_pronto(self, texto: str) -> None:
+    def _on_feedback_pronto(self, texto_limpo: str, audio_caminho: str) -> None:
         self._gerando_feedback = False
         self._set_status("Feedback")
-        self.ultima_fala_changed.emit("Feedback final pronto. Veja a janela ao lado.")
+        self.ultima_fala_changed.emit("Feedback final pronto.")
+
+        if audio_caminho and self.entrevista_ativa:
+            threading.Thread(
+                target=reproduzir_mp3,
+                args=(audio_caminho,),
+                kwargs={
+                    "on_status": self._set_status,
+                    "on_inicio": lambda: self.onda_ativa.emit(True, False),
+                    "on_fim": lambda: self.onda_ativa.emit(False, False),
+                },
+                daemon=True,
+            ).start()
 
         dialogo = QDialog(self)
         dialogo.setWindowTitle("Feedback final da entrevista")
@@ -1435,7 +1448,7 @@ class InterviewApp(QMainWindow):
 
         corpo = QTextEdit()
         corpo.setReadOnly(True)
-        corpo.setPlainText(texto)
+        corpo.setPlainText(texto_limpo)
         layout.addWidget(corpo)
 
         btn = QPushButton("Encerrar entrevista")
