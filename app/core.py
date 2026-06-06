@@ -600,11 +600,18 @@ def _resumir_trecho(
 ) -> str:
     instrucao = (
         "Você resume entrevistas de System Design para preservar o contexto sem estourar "
-        "a memória do modelo. Gere um resumo objetivo em português, em tópicos curtos, do "
-        "que JÁ aconteceu na entrevista: o problema, requisitos e escala definidos, decisões "
-        "e componentes que o candidato propôs, justificativas dadas, pontos fortes e fracos "
-        "já observados e o que ficou pendente. Preserve fatos e números exatos. Não invente "
-        "nada que não tenha sido dito. Seja conciso."
+        "a memória do modelo. Gere um resumo objetivo em português, em tópicos curtos, "
+        "cobrindo EXATAMENTE estes pontos:\n"
+        "1. Problema e escopo definidos.\n"
+        "2. Decisões e componentes propostos pelo candidato, com justificativas.\n"
+        "3. PERGUNTAS JÁ FEITAS PELO ENTREVISTADOR e as respostas que o candidato deu "
+        "(liste CADA pergunta, mesmo que brevemente, para que o entrevistador não as repita).\n"
+        "4. Tópicos de arquitetura já explorados e fechados nesta conversa.\n"
+        "5. Pontos fracos ou lacunas já apontados.\n"
+        "6. O que ainda está pendente / não foi abordado.\n"
+        "Preserve fatos e números exatos. Não invente nada que não tenha sido dito. "
+        "Seja conciso mas completo nos itens 3 e 4 — eles são críticos para evitar "
+        "que o entrevistador repita perguntas."
     )
     partes: list[str] = []
     if resumo_atual:
