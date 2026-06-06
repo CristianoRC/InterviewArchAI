@@ -28,13 +28,14 @@ from app.config import (
     CONTEXTO_MAX_TOKENS,
     DIFICULDADE_PADRAO,
     FEEDBACK_PROMPT_TEMPLATE,
+    GRAVACAO_MAX_SEG,
     IMAGEM_CUSTO_TOKENS,
     MODEL,
     NIVEIS_DIFICULDADE,
+    PAUSA_PRONTO_SEG,
     RESPOSTA_MAX_TOKENS,
     SAMPLE_RATE,
     SCREENSHOT_MAX_DIM,
-    SILENCIO_SEG,
     STT_LANGUAGE,
     SYSTEM_PROMPT_TEMPLATE,
     VISION_MODEL,
@@ -254,13 +255,23 @@ def gravar_audio_ate_silencio(
     on_status: StatusCallback | None = None,
     on_nivel: AudioLevelCallback | None = None,
     on_falou: Callable[[], None] | None = None,
+    on_silencio: Callable[[], None] | None = None,
+    on_voz: Callable[[], None] | None = None,
     parar_evento: threading.Event | None = None,
     dispositivo: int | None = None,
-    duracao_max: float = 90.0,
-    silencio_seg: float = SILENCIO_SEG,
+    duracao_max: float = GRAVACAO_MAX_SEG,
+    pausa_seg: float = PAUSA_PRONTO_SEG,
     limiar_rms: float = 0.008,
 ) -> str | None:
-    """Grava até silêncio após fala ou até parar_evento — modo híbrido."""
+    """Grava até o candidato clicar em "Pronto" (parar_evento) ou atingir o
+    limite de segurança `duracao_max`. NUNCA encerra automaticamente por silêncio.
+
+    Callbacks de pausa:
+    - on_falou: disparado uma vez quando a voz é detectada pela primeira vez.
+    - on_silencio: disparado quando o silêncio (após falar) atinge `pausa_seg`,
+      sinalizando uma pausa (momento de ativar o botão "Pronto").
+    - on_voz: disparado quando o candidato volta a falar depois de uma pausa já
+      sinalizada (momento de desativar o botão "Pronto")."""
     if on_status:
         on_status("Ouvindo... fale agora.")
 
@@ -275,6 +286,7 @@ def gravar_audio_ate_silencio(
     inicio = time.time()
     silencio_desde: float | None = None
     falou = False
+    pausa_sinalizada = False
 
     with sd.InputStream(
         samplerate=SAMPLE_RATE,
@@ -297,12 +309,24 @@ def gravar_audio_ate_silencio(
                     falou = True
                     if on_falou:
                         on_falou()
+                if pausa_sinalizada:
+                    # Voltou a falar depois de uma pausa: desativa o "Pronto".
+                    pausa_sinalizada = False
+                    if on_voz:
+                        on_voz()
                 silencio_desde = None
             elif falou:
                 if silencio_desde is None:
                     silencio_desde = time.time()
-                elif time.time() - silencio_desde >= silencio_seg:
-                    break
+                elif not pausa_sinalizada:
+                    dur_silencio = time.time() - silencio_desde
+                    if dur_silencio >= pausa_seg:
+                        # Pausa detectada: ativa o botão "Pronto". A gravação NÃO
+                        # encerra por silêncio — só pelo botão (parar_evento) ou
+                        # pelo limite de segurança (duracao_max).
+                        pausa_sinalizada = True
+                        if on_silencio:
+                            on_silencio()
 
     if not frames or not falou:
         return None
@@ -654,20 +678,14 @@ def obter_resposta_ia(
         historico = garantir_contexto(historico, system_prompt, client=client, model=model)
         mensagens = [{"role": "system", "content": system_prompt}] + historico
     else:
-        if nome:
-            gatilho = (
-                f"Pode começar a entrevista com {nome}. Apenas enuncie o problema de forma "
-                "enxuta e passe a palavra para o candidato conduzir. NÃO liste requisitos, "
-                "NÃO dê detalhes de escala ou escopo e NÃO faça perguntas de início. Não diga "
-                "ao candidato que ele precisa perguntar nem o instrua sobre o que fazer."
-            )
-        else:
-            gatilho = (
-                "Pode começar a entrevista. Apenas enuncie o problema de forma enxuta e passe "
-                "a palavra para o candidato conduzir. NÃO liste requisitos, NÃO dê detalhes de "
-                "escala ou escopo e NÃO faça perguntas de início. Não diga ao candidato que ele "
-                "precisa perguntar nem o instrua sobre o que fazer."
-            )
+        alvo = f" com {nome}" if nome else ""
+        gatilho = (
+            f"Comece a entrevista{alvo}. Saudação curtíssima pelo nome e enuncie o problema "
+            "em no máximo duas frases. NÃO liste requisitos, NÃO dê detalhes de escala ou "
+            "escopo e NÃO faça perguntas de início. Termine no enunciado do problema e pare. "
+            "NÃO escreva nenhuma frase dizendo que está passando a vez, aguardando ou ouvindo "
+            "(nada de 'passo a palavra', 'agora é com você', 'fico no aguardo')."
+        )
         mensagens = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": gatilho},

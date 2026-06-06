@@ -255,7 +255,7 @@ QPushButton#pronto:disabled {{
     color: rgba(255, 255, 255, 0.22);
     border: 1px solid rgba(255, 255, 255, 0.08);
 }}
-QPushButton#pronto_piscando {{
+QPushButton#pronto_ativo {{
     background-color: rgba(10, 132, 255, 0.55);
     color: #ffffff;
     border: 1px solid rgba(90, 200, 250, 0.85);
@@ -267,7 +267,7 @@ QPushButton#pronto_piscando {{
     font-weight: 600;
     padding: 0 12px;
 }}
-QPushButton#pronto_piscando:hover {{
+QPushButton#pronto_ativo:hover {{
     background-color: rgba(10, 132, 255, 0.70);
     border: 1px solid rgba(90, 200, 250, 1.0);
 }}
@@ -840,13 +840,11 @@ class TelaFlutuante(QWidget):
         self.btn_pronto.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_pronto.setToolTip(
             "Encerra sua fala e passa a vez.\n"
-            "Ativa depois que o microfone detecta sua voz."
+            "Ativa quando você faz uma pausa. A fala só termina ao clicar aqui."
         )
         self.btn_pronto.clicked.connect(self.app._ao_clicar_pronto)
         self.btn_pronto.hide()
         mic_row.addWidget(self.btn_pronto)
-        self._timer_piscar_pronto = QTimer(self)
-        self._timer_piscar_pronto.timeout.connect(self._alternar_piscar_pronto)
         mic_row.addSpacing(10)
         self.btn_tela = QPushButton("🖥")
         self.btn_tela.setObjectName("telaToggle")
@@ -892,27 +890,18 @@ class TelaFlutuante(QWidget):
             self.btn_pronto.setObjectName("pronto")
             self.btn_pronto.setStyle(self.btn_pronto.style())
         else:
-            self.parar_piscar_pronto()
             self.btn_pronto.hide()
 
-    def iniciar_piscar_pronto(self) -> None:
+    def ativar_pronto(self) -> None:
+        """Deixa o botão Pronto clicável (estado ativo), sem piscar."""
         self.btn_pronto.setEnabled(True)
-        self.btn_pronto.setObjectName("pronto_piscando")
+        self.btn_pronto.setObjectName("pronto_ativo")
         self.btn_pronto.setStyle(self.btn_pronto.style())
-        self._timer_piscar_pronto.start(500)
 
-    def parar_piscar_pronto(self) -> None:
-        self._timer_piscar_pronto.stop()
+    def desativar_pronto(self) -> None:
+        """Botão visível, porém inativo (enquanto o candidato fala)."""
+        self.btn_pronto.setEnabled(False)
         self.btn_pronto.setObjectName("pronto")
-        self.btn_pronto.setStyle(self.btn_pronto.style())
-
-    def _alternar_piscar_pronto(self) -> None:
-        nome = (
-            "pronto"
-            if self.btn_pronto.objectName() == "pronto_piscando"
-            else "pronto_piscando"
-        )
-        self.btn_pronto.setObjectName(nome)
         self.btn_pronto.setStyle(self.btn_pronto.style())
 
 
@@ -929,6 +918,8 @@ class InterviewApp(QMainWindow):
     feedback_pronto = pyqtSignal(str)
     habilitar_finalizar = pyqtSignal(bool)
     falou_detectado = pyqtSignal()
+    silencio_detectado = pyqtSignal()
+    voz_retomada = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -992,6 +983,8 @@ class InterviewApp(QMainWindow):
             self.tela_flutuante.btn_finalizar.setEnabled
         )
         self.falou_detectado.connect(self._on_falou_detectado)
+        self.silencio_detectado.connect(self._on_silencio_detectado)
+        self.voz_retomada.connect(self._on_voz_retomada)
 
     def _on_conexao_atualizada(self, ok: bool, msg: str) -> None:
         self.tela_inicial.atualizar_conexao(ok, msg)
@@ -1014,8 +1007,19 @@ class InterviewApp(QMainWindow):
         btn.setStyle(btn.style())
 
     def _on_falou_detectado(self) -> None:
-        self._set_status("Ouvindo... clique Pronto quando terminar.")
-        self.tela_flutuante.iniciar_piscar_pronto()
+        # Enquanto fala, o botão "Pronto" fica inativo e não pisca.
+        self._set_status("Ouvindo... fale à vontade.")
+        self.tela_flutuante.desativar_pronto()
+
+    def _on_silencio_detectado(self) -> None:
+        # Pausou: ativa o "Pronto" (sem piscar) para o candidato passar a vez.
+        self._set_status("Pausou? Clique Pronto para passar a vez.")
+        self.tela_flutuante.ativar_pronto()
+
+    def _on_voz_retomada(self) -> None:
+        # Voltou a falar: desativa o "Pronto" de novo.
+        self._set_status("Ouvindo... fale à vontade.")
+        self.tela_flutuante.desativar_pronto()
 
     def _ao_clicar_pronto(self) -> None:
         self._parar_gravacao.set()
@@ -1198,6 +1202,8 @@ class InterviewApp(QMainWindow):
                 on_status=self._set_status,
                 on_nivel=lambda rms: self.onda_nivel.emit(rms),
                 on_falou=lambda: self.falou_detectado.emit(),
+                on_silencio=lambda: self.silencio_detectado.emit(),
+                on_voz=lambda: self.voz_retomada.emit(),
                 parar_evento=self._parar_gravacao,
                 dispositivo=self.dispositivo_microfone,
             )
