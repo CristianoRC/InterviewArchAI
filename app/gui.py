@@ -413,6 +413,18 @@ ALTURA_FLUTUANTE = 242
 NUM_BARRAS_ONDA = 18
 
 
+def centralizar_na_tela(widget: QWidget) -> None:
+    """Posiciona o widget no centro da área útil da tela principal."""
+    tela = QApplication.primaryScreen()
+    if not tela:
+        return
+    geo = tela.availableGeometry()
+    widget.move(
+        geo.center().x() - widget.width() // 2,
+        geo.center().y() - widget.height() // 2,
+    )
+
+
 def aplicar_vibrancia(window: QWidget, escuro: bool = True, raio: float = 0.0) -> None:
     """Aplica vidro translúcido nativo (NSVisualEffectView) no macOS — estilo Tahoe."""
     if sys.platform != "darwin":
@@ -1430,12 +1442,18 @@ class InterviewApp(QMainWindow):
                 daemon=True,
             ).start()
 
-        dialogo = QDialog(self)
+        self._pausar_topo()
+
+        dialogo = QDialog(None)
         dialogo.setWindowTitle("Feedback final da entrevista")
-        dialogo.setModal(True)
+        dialogo.setWindowModality(Qt.WindowModality.ApplicationModal)
         dialogo.setMinimumSize(560, 560)
+        dialogo.resize(640, 720)
         dialogo.setWindowFlags(
-            dialogo.windowFlags() | Qt.WindowType.WindowStaysOnTopHint
+            Qt.WindowType.Dialog
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowCloseButtonHint
+            | Qt.WindowType.WindowStaysOnTopHint
         )
 
         layout = QVBoxLayout(dialogo)
@@ -1457,6 +1475,7 @@ class InterviewApp(QMainWindow):
         btn.clicked.connect(dialogo.accept)
         layout.addWidget(btn)
 
+        centralizar_na_tela(dialogo)
         dialogo.raise_()
         dialogo.activateWindow()
         dialogo.exec()
