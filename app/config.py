@@ -40,9 +40,10 @@ COMPACTAR_MANTER_ULTIMAS = 6  # mantém as últimas N mensagens literais (~3 rod
 # (n_ctx) carregado no LM Studio. Se você aumentar o n_ctx lá, aumente aqui também.
 CONTEXTO_MAX_TOKENS = 4096
 # Tokens reservados para a RESPOSTA do modelo (saída também consome o mesmo n_ctx).
-# O entrevistador deve falar 1-2 frases curtas, então um teto baixo força a
-# concisão mesmo que o modelo ignore o prompt e tente discursar.
-RESPOSTA_MAX_TOKENS = 160
+# A brevidade do entrevistador vem do PROMPT (1-2 frases), não daqui: este teto
+# precisa ser folgado o suficiente para nunca cortar a fala no meio (o que soa
+# péssimo no TTS). Se o modelo ainda divagar, é caso de prompt/modelo, não de teto.
+RESPOSTA_MAX_TOKENS = 400
 # Estimativa grosseira de tokens: caracteres por token. ~3 é conservador para
 # português no tokenizer do Qwen (melhor superestimar do que estourar).
 CHARS_POR_TOKEN = 3.0

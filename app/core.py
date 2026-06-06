@@ -752,4 +752,26 @@ def obter_resposta_ia(
         max_tokens=RESPOSTA_MAX_TOKENS,
         temperature=0.4,
     )
-    return resposta.choices[0].message.content.strip()
+    escolha = resposta.choices[0]
+    texto = (escolha.message.content or "").strip()
+    # Se o modelo bateu no teto de tokens (finish_reason="length"), a fala foi
+    # cortada no meio. Em vez de mandar uma frase quebrada pro TTS, aparamos até
+    # a última frase completa para nunca soar truncado.
+    if getattr(escolha, "finish_reason", None) == "length":
+        texto = _aparar_frase_incompleta(texto)
+    return texto
+
+
+def _aparar_frase_incompleta(texto: str) -> str:
+    """Remove uma última frase incompleta (corte por limite de tokens).
+
+    Mantém o texto até o último terminador de frase (. ! ? … ou nova linha). Se
+    não houver nenhum terminador (a resposta inteira é uma frase só, cortada),
+    devolve o texto original — melhor uma frase incompleta do que nada."""
+    if not texto:
+        return texto
+    terminadores = ".!?…\n"
+    ultimo = max(texto.rfind(c) for c in terminadores)
+    if ultimo == -1:
+        return texto
+    return texto[: ultimo + 1].strip()
