@@ -1,8 +1,27 @@
-# local-arch-interviewer
+<p align="center">
+  <img src="assets/app_icon_v2.png" alt="Talk System Design logo" width="200"/>
+</p>
 
-Simule entrevistas de System Design por voz usando um modelo de linguagem com visão rodando **100% local** via [LM Studio](https://lmstudio.ai).
+<h1 align="center">Talk System Design</h1>
 
-Disponível como **app desktop para macOS** (interface gráfica) ou via terminal (CLI).
+<p align="center">
+  Simule entrevistas de System Design por voz com IA rodando <strong>100% local</strong> via <a href="https://lmstudio.ai">LM Studio</a>.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/macOS-only-lightgrey?logo=apple" alt="macOS"/>
+  <img src="https://img.shields.io/badge/Python-3.9+-blue?logo=python" alt="Python 3.9+"/>
+  <img src="https://img.shields.io/badge/LM%20Studio-local%20LLM-blueviolet" alt="LM Studio"/>
+  <img src="https://img.shields.io/badge/licença-MIT-green" alt="MIT License"/>
+</p>
+
+---
+
+## O que é
+
+**Talk System Design** é um entrevistador de System Design que funciona **100% offline** na sua máquina. Ele usa um modelo de linguagem com visão (via LM Studio), reconhecimento de voz local (Whisper) e síntese de voz em PT-BR (Edge TTS) para conduzir entrevistas técnicas interativas por voz.
+
+Disponível como **app desktop para macOS** (interface gráfica) ou via **terminal (CLI)**.
 
 ---
 
@@ -86,7 +105,7 @@ Após iniciar, o app vira uma janela compacta que **fica sempre visível** no ca
 - Screenshot da tela é capturado e o ciclo continua
 - Arraste pela barra superior para reposicionar a janela
 
-Antes de iniciar, abra o LM Studio, carregue um modelo com visão e inicie o Local Server na porta 1234.
+> Antes de iniciar, abra o LM Studio, carregue um modelo com visão e inicie o Local Server na porta 1234.
 
 ---
 
@@ -101,7 +120,7 @@ WHISPER_MODEL_SIZE = "tiny"
 SCREENSHOT_MAX_DIM = 1024  # maior dimensão (px) do screenshot enviado ao modelo
 ```
 
-O screenshot é redimensionado (via `sips`) para que sua maior dimensão não passe de `SCREENSHOT_MAX_DIM` antes de ser enviado. Como os "tokens de visão" escalam com a resolução da imagem, esse limite é o principal fator para não estourar a janela de contexto. Diminua para 768 se ainda estourar; aumente para 1280+ se precisar de mais detalhe nos diagramas.
+O screenshot é redimensionado (via `sips`) para que sua maior dimensão não passe de `SCREENSHOT_MAX_DIM` antes de ser enviado. Como os "tokens de visão" escalam com a resolução da imagem, esse limite é o principal fator para não estourar a janela de contexto. Diminua para `768` se ainda estourar; aumente para `1280+` se precisar de mais detalhe nos diagramas.
 
 ---
 
@@ -109,9 +128,9 @@ O screenshot é redimensionado (via `sips`) para que sua maior dimensão não pa
 
 ### Erro: `request (N tokens) exceeds the available context size (4096 tokens)`
 
-Esse erro vem do **LM Studio**, não da app: o modelo foi carregado com uma janela de contexto pequena (geralmente 4096 tokens) e a requisição — system prompt + histórico + screenshot — não cabe.
+Esse erro vem do **LM Studio**, não do app: o modelo foi carregado com uma janela de contexto pequena (geralmente 4096 tokens) e a requisição — system prompt + histórico + screenshot — não cabe.
 
-**Use o contexto máximo do modelo no LM Studio:**
+**Solução — use o contexto máximo do modelo no LM Studio:**
 
 1. Em **My Models** (ou na aba do servidor), **descarregue** (Eject) o modelo.
 2. Ao recarregar `qwen/qwen3-vl-8b`, abra as opções de **load**.
@@ -131,6 +150,8 @@ talk-system-design/
 │   ├── core.py                 # STT, TTS, screenshots, API
 │   ├── gui.py                  # Interface desktop
 │   └── main.py                 # Ponto de entrada do app
+├── assets/
+│   └── app_icon_v2.png         # Logo do projeto
 ├── local_arch_interviewer.py   # Versão CLI (terminal)
 ├── requirements.txt
 ├── install.sh
@@ -142,4 +163,4 @@ talk-system-design/
 
 ## Licença
 
-MIT
+Este projeto está licenciado sob a [MIT License](LICENSE).
