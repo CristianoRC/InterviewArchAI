@@ -98,7 +98,27 @@ Edite `app/config.py` para alterar voz, modelo Whisper ou problema padrão:
 VOICE = "pt-BR-FranciscaNeural"  # feminina (padrão)
 MODEL = "qwen/qwen3-vl-8b"
 WHISPER_MODEL_SIZE = "tiny"
+SCREENSHOT_MAX_DIM = 1024  # maior dimensão (px) do screenshot enviado ao modelo
 ```
+
+O screenshot é redimensionado (via `sips`) para que sua maior dimensão não passe de `SCREENSHOT_MAX_DIM` antes de ser enviado. Como os "tokens de visão" escalam com a resolução da imagem, esse limite é o principal fator para não estourar a janela de contexto. Diminua para 768 se ainda estourar; aumente para 1280+ se precisar de mais detalhe nos diagramas.
+
+---
+
+## Troubleshooting
+
+### Erro: `request (N tokens) exceeds the available context size (4096 tokens)`
+
+Esse erro vem do **LM Studio**, não da app: o modelo foi carregado com uma janela de contexto pequena (geralmente 4096 tokens) e a requisição — system prompt + histórico + screenshot — não cabe.
+
+**Use o contexto máximo do modelo no LM Studio:**
+
+1. Em **My Models** (ou na aba do servidor), **descarregue** (Eject) o modelo.
+2. Ao recarregar `qwen/qwen3-vl-8b`, abra as opções de **load**.
+3. Em **Context Length**, arraste o valor para o **máximo suportado pelo modelo** (o Qwen3-VL suporta muito mais que 4096). Comece com **8192** e suba se sua máquina aguentar.
+4. Reinicie o **Local Server** (porta 1234).
+
+> Contexto maior usa mais RAM/VRAM. Se a máquina ficar lenta ou o load falhar, reduza o Context Length e/ou diminua `SCREENSHOT_MAX_DIM` em `app/config.py`.
 
 ---
 

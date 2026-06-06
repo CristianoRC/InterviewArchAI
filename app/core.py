@@ -26,6 +26,7 @@ from app.config import (
     MODEL,
     NIVEIS_DIFICULDADE,
     SAMPLE_RATE,
+    SCREENSHOT_MAX_DIM,
     STT_LANGUAGE,
     SYSTEM_PROMPT_TEMPLATE,
     VISION_MODEL,
@@ -34,6 +35,7 @@ from app.config import (
 )
 
 StatusCallback = Callable[[str], None]
+AudioLevelCallback = Callable[[float], None]
 
 _whisper: WhisperModel | None = None
 
@@ -126,6 +128,24 @@ def capturar_tela(display: int | None = None) -> str | None:
     return tmp.name
 
 
+def redimensionar_imagem(caminho: str, max_dim: int = SCREENSHOT_MAX_DIM) -> None:
+    """Reduz a maior dimensão da imagem para ``max_dim`` px, in-place.
+
+    Usa o ``sips`` nativo do macOS — sem dependências extras. Os tokens de
+    visão de modelos como o Qwen3-VL escalam com a resolução, então reduzir a
+    imagem é o que evita estourar a janela de contexto do LM Studio. Falhas
+    são ignoradas: no pior caso, segue com a imagem original.
+    """
+    try:
+        subprocess.run(
+            ["sips", "-Z", str(max_dim), caminho],
+            capture_output=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+
 def imagem_para_base64(caminho: str) -> str:
     with open(caminho, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
@@ -144,6 +164,7 @@ def carregar_whisper(on_status: StatusCallback | None = None) -> WhisperModel:
 
 def gravar_audio_ate_silencio(
     on_status: StatusCallback | None = None,
+    on_nivel: AudioLevelCallback | None = None,
     duracao_max: float = 90.0,
     silencio_seg: float = 2.0,
     limiar_rms: float = 0.008,
@@ -153,10 +174,12 @@ def gravar_audio_ate_silencio(
         on_status("Ouvindo... fale agora.")
 
     frames: list[np.ndarray] = []
-    bloco = int(SAMPLE_RATE * 0.1)
+    bloco = int(SAMPLE_RATE * 0.04)
 
     def callback(indata: np.ndarray, _f, _t, _s) -> None:
         frames.append(indata.copy())
+        if on_nivel:
+            on_nivel(float(np.sqrt(np.mean(indata**2))))
 
     inicio = time.time()
     silencio_desde: float | None = None
@@ -170,10 +193,10 @@ def gravar_audio_ate_silencio(
         blocksize=bloco,
     ):
         while time.time() - inicio < duracao_max:
-            time.sleep(0.15)
+            time.sleep(0.08)
             if not frames:
                 continue
-            recente = np.concatenate(frames[-5:])
+            recente = np.concatenate(frames[-3:])
             rms = float(np.sqrt(np.mean(recente**2)))
             if rms >= limiar_rms:
                 falou = True
@@ -226,6 +249,7 @@ def montar_mensagem_usuario(texto: str, caminho_imagem: str | None) -> dict:
     if not caminho_imagem:
         return {"role": "user", "content": texto}
 
+    redimensionar_imagem(caminho_imagem)
     imagem_b64 = imagem_para_base64(caminho_imagem)
     os.remove(caminho_imagem)
 
@@ -268,11 +292,18 @@ def obter_resposta_ia(
     else:
         if nome:
             gatilho = (
-                f"Pode começar a entrevista com {nome}. "
-                "Apresente o problema e faça a primeira pergunta."
+                f"Pode começar a entrevista com {nome}. Apenas enuncie o problema de forma "
+                "enxuta e passe a palavra para o candidato conduzir. NÃO liste requisitos, "
+                "NÃO dê detalhes de escala ou escopo e NÃO faça perguntas de início. Não diga "
+                "ao candidato que ele precisa perguntar nem o instrua sobre o que fazer."
             )
         else:
-            gatilho = "Pode começar a entrevista. Apresente o problema e faça a primeira pergunta."
+            gatilho = (
+                "Pode começar a entrevista. Apenas enuncie o problema de forma enxuta e passe "
+                "a palavra para o candidato conduzir. NÃO liste requisitos, NÃO dê detalhes de "
+                "escala ou escopo e NÃO faça perguntas de início. Não diga ao candidato que ele "
+                "precisa perguntar nem o instrua sobre o que fazer."
+            )
         mensagens = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": gatilho},
