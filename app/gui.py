@@ -51,6 +51,7 @@ from app.core import (
     montar_mensagem_usuario,
     montar_system_prompt,
     obter_resposta_ia,
+    parar_fala,
     transcrever_audio,
     validar_servidor,
 )
@@ -913,9 +914,13 @@ class InterviewApp(QMainWindow):
             self.fala_entrevistador = fala
             self.ultima_fala_changed.emit(fala)
             self._falar_entrevistador(fala)
+            if not self.entrevista_ativa:
+                return
             self.habilitar_mic.emit(True)
             self._set_status("Sua vez")
         except Exception as exc:
+            if not self.entrevista_ativa:
+                return
             self.mostrar_erro.emit(str(exc))
             self.voltar_setup.emit()
 
@@ -950,6 +955,8 @@ class InterviewApp(QMainWindow):
                 self.fala_entrevistador = "Não consegui te ouvir. Tente de novo."
                 self.ultima_fala_changed.emit(self.fala_entrevistador)
                 self._falar_entrevistador(self.fala_entrevistador)
+                if not self.entrevista_ativa:
+                    return
                 self.processando_mic = False
                 self.habilitar_mic.emit(True)
                 self._set_status("Sua vez")
@@ -977,10 +984,14 @@ class InterviewApp(QMainWindow):
             self.fala_entrevistador = fala
             self.ultima_fala_changed.emit(fala)
             self._falar_entrevistador(fala)
+            if not self.entrevista_ativa:
+                return
             self.processando_mic = False
             self.habilitar_mic.emit(True)
             self._set_status("Sua vez")
         except Exception as exc:
+            if not self.entrevista_ativa:
+                return
             self.mic_gravando.emit(False)
             self.onda_ativa.emit(False, False)
             self.processando_mic = False
@@ -1039,8 +1050,14 @@ class InterviewApp(QMainWindow):
         else:
             self._retomar_topo()
 
+    def closeEvent(self, event) -> None:
+        self.entrevista_ativa = False
+        parar_fala()
+        event.accept()
+
     def _finalizar_entrevista(self) -> None:
         self.entrevista_ativa = False
+        parar_fala()
         self.processando_mic = False
         self.onda_ativa.emit(False, False)
         self.ultima_fala_changed.emit("Entrevista encerrada.")
@@ -1073,6 +1090,7 @@ class InterviewApp(QMainWindow):
 
 def run() -> None:
     app = QApplication(sys.argv)
+    app.aboutToQuit.connect(parar_fala)
     app.setWindowIcon(carregar_icone())
     font = QFont(fonte_sistema())
     font.setPointSize(13)

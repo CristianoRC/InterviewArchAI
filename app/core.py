@@ -38,6 +38,8 @@ StatusCallback = Callable[[str], None]
 AudioLevelCallback = Callable[[float], None]
 
 _whisper: WhisperModel | None = None
+_afplay_proc: subprocess.Popen[bytes] | None = None
+_cancelar_fala = threading.Event()
 
 
 def criar_cliente(base_url: str = BASE_URL, api_key: str = API_KEY) -> OpenAI:
@@ -75,6 +77,19 @@ def limpar_texto(texto: str) -> str:
     return texto
 
 
+def parar_fala() -> None:
+    """Interrompe a reprodução TTS em andamento (ex.: ao fechar o app)."""
+    global _afplay_proc
+    _cancelar_fala.set()
+    if _afplay_proc is not None and _afplay_proc.poll() is None:
+        _afplay_proc.terminate()
+        try:
+            _afplay_proc.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            _afplay_proc.kill()
+    _afplay_proc = None
+
+
 def falar_texto(
     texto: str,
     on_status: StatusCallback | None = None,
@@ -85,22 +100,35 @@ def falar_texto(
     if not texto_limpo:
         return
 
+    _cancelar_fala.clear()
+
     if on_status:
         on_status("Reproduzindo áudio...")
 
     async def _gerar_e_reproduzir() -> None:
+        global _afplay_proc
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
             caminho = tmp.name
-        communicate = edge_tts.Communicate(texto_limpo, VOICE)
-        await communicate.save(caminho)
-        if on_inicio:
-            on_inicio()
         try:
-            subprocess.run(["afplay", caminho], check=True)
+            communicate = edge_tts.Communicate(texto_limpo, VOICE)
+            await communicate.save(caminho)
+            if _cancelar_fala.is_set():
+                return
+
+            reproduzindo = False
+            if on_inicio:
+                on_inicio()
+                reproduzindo = True
+            try:
+                _afplay_proc = subprocess.Popen(["afplay", caminho])
+                _afplay_proc.wait()
+            finally:
+                _afplay_proc = None
+                if reproduzindo and on_fim:
+                    on_fim()
         finally:
-            if on_fim:
-                on_fim()
-        os.remove(caminho)
+            if os.path.exists(caminho):
+                os.remove(caminho)
 
     asyncio.run(_gerar_e_reproduzir())
 
