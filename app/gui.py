@@ -20,6 +20,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -34,7 +35,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from app.config import BASE_URL, DIFICULDADE_PADRAO, MODEL, PROBLEMA
+from app.config import (
+    BASE_URL,
+    COMPACTAR_HISTORICO_LIMITE,
+    DIFICULDADE_PADRAO,
+    MODEL,
+    PROBLEMA,
+)
 
 OPCOES_SENIORIDADE = [
     ("junior", "Júnior"),
@@ -44,10 +51,14 @@ OPCOES_SENIORIDADE = [
 ]
 from app.core import (
     capturar_tela,
+    compactar_historico,
     criar_cliente,
     falar_texto,
+    gerar_feedback_final,
     gravar_audio_ate_silencio,
+    indice_microfone_padrao,
     limpar_texto,
+    listar_microfones,
     montar_mensagem_usuario,
     montar_system_prompt,
     obter_resposta_ia,
@@ -225,6 +236,100 @@ QPushButton#mic_gravando {{
     max-height: 48px;
     font-size: 21px;
     padding: 0;
+}}
+
+QPushButton#pronto {{
+    background-color: rgba(10, 132, 255, 0.18);
+    color: rgba(90, 200, 250, 0.55);
+    border: 1px solid rgba(10, 132, 255, 0.30);
+    border-radius: 20px;
+    min-width: 72px;
+    min-height: 40px;
+    max-height: 40px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 12px;
+}}
+QPushButton#pronto:disabled {{
+    background-color: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}}
+QPushButton#pronto_piscando {{
+    background-color: rgba(10, 132, 255, 0.55);
+    color: #ffffff;
+    border: 1px solid rgba(90, 200, 250, 0.85);
+    border-radius: 20px;
+    min-width: 72px;
+    min-height: 40px;
+    max-height: 40px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 12px;
+}}
+QPushButton#pronto_piscando:hover {{
+    background-color: rgba(10, 132, 255, 0.70);
+    border: 1px solid rgba(90, 200, 250, 1.0);
+}}
+
+QPushButton#telaToggle {{
+    background-color: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 20px;
+    min-width: 40px;
+    min-height: 40px;
+    max-width: 40px;
+    max-height: 40px;
+    font-size: 17px;
+    padding: 0;
+}}
+QPushButton#telaToggle:hover {{
+    background-color: rgba(255, 255, 255, 0.13);
+    border: 1px solid rgba(255, 255, 255, 0.24);
+}}
+QPushButton#telaToggle:disabled {{
+    background-color: rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}}
+QPushButton#telaToggle_ativo {{
+    background-color: rgba(10, 132, 255, 0.22);
+    color: #5AC8FA;
+    border: 1px solid rgba(10, 132, 255, 0.65);
+    border-radius: 20px;
+    min-width: 40px;
+    min-height: 40px;
+    max-width: 40px;
+    max-height: 40px;
+    font-size: 17px;
+    padding: 0;
+}}
+QPushButton#telaToggle_ativo:hover {{
+    background-color: rgba(10, 132, 255, 0.30);
+    border: 1px solid rgba(10, 132, 255, 0.85);
+}}
+
+QPushButton#finalizar {{
+    background-color: rgba(48, 209, 88, 0.16);
+    color: #30D158;
+    border: 1px solid rgba(48, 209, 88, 0.45);
+    border-radius: 20px;
+    min-width: 40px;
+    min-height: 40px;
+    max-width: 40px;
+    max-height: 40px;
+    font-size: 17px;
+    padding: 0;
+}}
+QPushButton#finalizar:hover {{
+    background-color: rgba(48, 209, 88, 0.26);
+    border: 1px solid rgba(48, 209, 88, 0.70);
+}}
+QPushButton#finalizar:disabled {{
+    background-color: rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.06);
 }}
 
 QPushButton#fechar {{
@@ -527,6 +632,12 @@ class TelaInicial(QWidget):
         card_layout.addWidget(self.tela_combo)
         card_layout.addSpacing(8)
 
+        card_layout.addWidget(self._rotulo("Microfone"))
+        self.mic_combo = QComboBox()
+        self._popular_microfones()
+        card_layout.addWidget(self.mic_combo)
+        card_layout.addSpacing(8)
+
         card_layout.addWidget(self._rotulo("Problema da entrevista"))
         self.problema_text = QTextEdit()
         self.problema_text.setPlainText(PROBLEMA)
@@ -605,6 +716,34 @@ class TelaInicial(QWidget):
             marca = " — principal" if screen is primaria else ""
             rotulo = f"{indice}. {screen.name()} ({geo.width()}x{geo.height()}){marca}"
             self.tela_combo.addItem(rotulo, indice)
+
+    def _popular_microfones(self) -> None:
+        """Lista os microfones de entrada. Data = índice do dispositivo no PortAudio."""
+        selecionado = self.mic_combo.currentData() if hasattr(self, "mic_combo") else None
+        self.mic_combo.clear()
+
+        dispositivos = listar_microfones()
+        if not dispositivos:
+            self.mic_combo.addItem("Nenhum microfone detectado", None)
+            self.mic_combo.setEnabled(False)
+            return
+
+        self.mic_combo.setEnabled(True)
+        padrao = indice_microfone_padrao()
+        for indice, nome in dispositivos:
+            marca = " — padrão" if indice == padrao else ""
+            self.mic_combo.addItem(f"{nome}{marca}", indice)
+
+        if selecionado is not None:
+            idx = self.mic_combo.findData(selecionado)
+            if idx >= 0:
+                self.mic_combo.setCurrentIndex(idx)
+                return
+
+        if padrao is not None:
+            idx = self.mic_combo.findData(padrao)
+            if idx >= 0:
+                self.mic_combo.setCurrentIndex(idx)
 
 
 class BarraTitulo(QWidget):
@@ -694,8 +833,49 @@ class TelaFlutuante(QWidget):
         self.btn_mic.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_mic.clicked.connect(self.app._ao_clicar_mic)
         mic_row.addWidget(self.btn_mic)
+        mic_row.addSpacing(8)
+        self.btn_pronto = QPushButton("Pronto")
+        self.btn_pronto.setObjectName("pronto")
+        self.btn_pronto.setEnabled(False)
+        self.btn_pronto.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_pronto.setToolTip(
+            "Encerra sua fala e passa a vez.\n"
+            "Ativa depois que o microfone detecta sua voz."
+        )
+        self.btn_pronto.clicked.connect(self.app._ao_clicar_pronto)
+        self.btn_pronto.hide()
+        mic_row.addWidget(self.btn_pronto)
+        self._timer_piscar_pronto = QTimer(self)
+        self._timer_piscar_pronto.timeout.connect(self._alternar_piscar_pronto)
+        mic_row.addSpacing(10)
+        self.btn_tela = QPushButton("🖥")
+        self.btn_tela.setObjectName("telaToggle")
+        self.btn_tela.setCheckable(True)
+        self.btn_tela.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_tela.setToolTip(
+            "Anexar a tela nas mensagens enquanto estiver ligado.\n"
+            "Desligado = mais rápido (só texto). Ligue para mostrar o diagrama."
+        )
+        self.btn_tela.clicked.connect(self.app._ao_alternar_tela)
+        mic_row.addWidget(self.btn_tela)
+        mic_row.addSpacing(10)
+        self.btn_finalizar = QPushButton("🏁")
+        self.btn_finalizar.setObjectName("finalizar")
+        self.btn_finalizar.setEnabled(False)
+        self.btn_finalizar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_finalizar.setToolTip(
+            "Encerrar a entrevista e receber o feedback final da entrevistadora:\n"
+            "resumo do papo, pontos fortes e fracos e o que estudar."
+        )
+        self.btn_finalizar.clicked.connect(self.app._encerrar_com_feedback)
+        mic_row.addWidget(self.btn_finalizar)
         mic_row.addStretch()
         root.addLayout(mic_row)
+
+    def atualizar_toggle_tela(self, ativo: bool) -> None:
+        self.btn_tela.setObjectName("telaToggle_ativo" if ativo else "telaToggle")
+        self.btn_tela.setChecked(ativo)
+        self.btn_tela.setStyle(self.btn_tela.style())
 
     def atualizar_ultima_fala(self, texto: str) -> None:
         self.ultima_fala.setPlainText(texto)
@@ -704,6 +884,36 @@ class TelaFlutuante(QWidget):
 
     def set_onda_ativa(self, ativo: bool, ao_vivo: bool = False) -> None:
         self.onda_voz.set_ativo(ativo, ao_vivo=ao_vivo)
+
+    def mostrar_pronto(self, visivel: bool, habilitado: bool = False) -> None:
+        if visivel:
+            self.btn_pronto.show()
+            self.btn_pronto.setEnabled(habilitado)
+            self.btn_pronto.setObjectName("pronto")
+            self.btn_pronto.setStyle(self.btn_pronto.style())
+        else:
+            self.parar_piscar_pronto()
+            self.btn_pronto.hide()
+
+    def iniciar_piscar_pronto(self) -> None:
+        self.btn_pronto.setEnabled(True)
+        self.btn_pronto.setObjectName("pronto_piscando")
+        self.btn_pronto.setStyle(self.btn_pronto.style())
+        self._timer_piscar_pronto.start(500)
+
+    def parar_piscar_pronto(self) -> None:
+        self._timer_piscar_pronto.stop()
+        self.btn_pronto.setObjectName("pronto")
+        self.btn_pronto.setStyle(self.btn_pronto.style())
+
+    def _alternar_piscar_pronto(self) -> None:
+        nome = (
+            "pronto"
+            if self.btn_pronto.objectName() == "pronto_piscando"
+            else "pronto_piscando"
+        )
+        self.btn_pronto.setObjectName(nome)
+        self.btn_pronto.setStyle(self.btn_pronto.style())
 
 
 class InterviewApp(QMainWindow):
@@ -716,23 +926,32 @@ class InterviewApp(QMainWindow):
     mostrar_erro = pyqtSignal(str)
     conexao_atualizada = pyqtSignal(bool, str)
     voltar_setup = pyqtSignal()
+    feedback_pronto = pyqtSignal(str)
+    habilitar_finalizar = pyqtSignal(bool)
+    falou_detectado = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Local Arch Interviewer")
         self.setWindowIcon(carregar_icone())
-        self.resize(720, 760)
-        self.setMinimumSize(640, 540)
+        self.resize(720, 880)
+        self.setMinimumSize(640, 640)
 
         self.client = criar_cliente()
         self.historico: list[dict] = []
         self.system_prompt = ""
         self.fala_entrevistador = ""
         self.nome_candidato = ""
+        self.problema = ""
+        self.senioridade = DIFICULDADE_PADRAO
         self.entrevista_ativa = False
         self.processando_mic = False
+        self._gerando_feedback = False
+        self.anexar_tela = False
         self.display_captura: int | None = None
+        self.dispositivo_microfone: int | None = None
         self._topo_pausado = False
+        self._parar_gravacao = threading.Event()
 
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
 
@@ -763,6 +982,11 @@ class InterviewApp(QMainWindow):
         self.mostrar_erro.connect(lambda msg: QMessageBox.critical(self, "Erro", msg))
         self.conexao_atualizada.connect(self._on_conexao_atualizada)
         self.voltar_setup.connect(self._on_voltar_setup)
+        self.feedback_pronto.connect(self._on_feedback_pronto)
+        self.habilitar_finalizar.connect(
+            self.tela_flutuante.btn_finalizar.setEnabled
+        )
+        self.falou_detectado.connect(self._on_falou_detectado)
 
     def _on_conexao_atualizada(self, ok: bool, msg: str) -> None:
         self.tela_inicial.atualizar_conexao(ok, msg)
@@ -772,14 +996,24 @@ class InterviewApp(QMainWindow):
 
     def _on_mic_gravando(self, gravando: bool) -> None:
         btn = self.tela_flutuante.btn_mic
+        flutuante = self.tela_flutuante
         if gravando:
             btn.setObjectName("mic_gravando")
             btn.setEnabled(False)
             self.onda_ativa.emit(True, True)
+            flutuante.mostrar_pronto(True, habilitado=False)
         else:
             btn.setObjectName("mic")
             self.onda_ativa.emit(False, False)
+            flutuante.mostrar_pronto(False)
         btn.setStyle(btn.style())
+
+    def _on_falou_detectado(self) -> None:
+        self._set_status("Ouvindo... clique Pronto quando terminar.")
+        self.tela_flutuante.iniciar_piscar_pronto()
+
+    def _ao_clicar_pronto(self) -> None:
+        self._parar_gravacao.set()
 
     def _set_status(self, texto: str) -> None:
         self.status_changed.emit(texto)
@@ -872,12 +1106,20 @@ class InterviewApp(QMainWindow):
         problema = self.tela_inicial.problema_text.toPlainText().strip()
         senioridade = self.tela_inicial.senioridade_combo.currentData()
         self.display_captura = self.tela_inicial.tela_combo.currentData()
+        self.dispositivo_microfone = self.tela_inicial.mic_combo.currentData()
 
         if not nome:
             QMessageBox.warning(self, "Nome", "Informe seu nome para começar.")
             return
         if not problema:
             QMessageBox.warning(self, "Problema", "Descreva o problema da entrevista.")
+            return
+        if self.dispositivo_microfone is None:
+            QMessageBox.warning(
+                self,
+                "Microfone",
+                "Nenhum microfone foi detectado. Conecte um microfone e tente novamente.",
+            )
             return
 
         self.client = criar_cliente(base_url=BASE_URL)
@@ -887,8 +1129,13 @@ class InterviewApp(QMainWindow):
             return
 
         self.nome_candidato = nome
+        self.problema = problema
+        self.senioridade = senioridade
         self.entrevista_ativa = True
+        self._gerando_feedback = False
         self.historico = []
+        self.anexar_tela = False
+        self.tela_flutuante.atualizar_toggle_tela(False)
         self.system_prompt = montar_system_prompt(problema, nome, senioridade)
 
         self.tela_flutuante.barra_titulo.lbl_candidato.setText(nome)
@@ -896,6 +1143,7 @@ class InterviewApp(QMainWindow):
         self._ativar_modo_flutuante()
         self._set_status("Pensando...")
         self.habilitar_mic.emit(False)
+        self.habilitar_finalizar.emit(False)
 
         threading.Thread(target=self._loop_primeira_fala, daemon=True).start()
 
@@ -917,6 +1165,7 @@ class InterviewApp(QMainWindow):
             if not self.entrevista_ativa:
                 return
             self.habilitar_mic.emit(True)
+            self.habilitar_finalizar.emit(True)
             self._set_status("Sua vez")
         except Exception as exc:
             if not self.entrevista_ativa:
@@ -924,11 +1173,17 @@ class InterviewApp(QMainWindow):
             self.mostrar_erro.emit(str(exc))
             self.voltar_setup.emit()
 
+    def _ao_alternar_tela(self) -> None:
+        self.anexar_tela = not self.anexar_tela
+        self.tela_flutuante.atualizar_toggle_tela(self.anexar_tela)
+
     def _ao_clicar_mic(self) -> None:
-        if self.processando_mic or not self.entrevista_ativa:
+        if self.processando_mic or not self.entrevista_ativa or self._gerando_feedback:
             return
         self.processando_mic = True
+        self._parar_gravacao.clear()
         self.habilitar_mic.emit(False)
+        self.habilitar_finalizar.emit(False)
         self.mic_gravando.emit(True)
         threading.Thread(target=self._processar_fala, daemon=True).start()
 
@@ -937,6 +1192,9 @@ class InterviewApp(QMainWindow):
             caminho_audio = gravar_audio_ate_silencio(
                 on_status=self._set_status,
                 on_nivel=lambda rms: self.onda_nivel.emit(rms),
+                on_falou=lambda: self.falou_detectado.emit(),
+                parar_evento=self._parar_gravacao,
+                dispositivo=self.dispositivo_microfone,
             )
             self.mic_gravando.emit(False)
 
@@ -959,15 +1217,27 @@ class InterviewApp(QMainWindow):
                     return
                 self.processando_mic = False
                 self.habilitar_mic.emit(True)
+                self.habilitar_finalizar.emit(True)
                 self._set_status("Sua vez")
                 return
 
-            self._set_status("Capturando tela...")
-            caminho_screenshot = capturar_tela(self.display_captura)
+            caminho_screenshot = None
+            if self.anexar_tela:
+                self._set_status("Capturando tela...")
+                caminho_screenshot = capturar_tela(self.display_captura)
 
             mensagem = montar_mensagem_usuario(texto, caminho_screenshot)
             self.historico.append({"role": "assistant", "content": self.fala_entrevistador})
             self.historico.append(mensagem)
+
+            # Em entrevistas longas o histórico cresce e pode estourar o contexto
+            # do modelo local: resumimos as rodadas antigas e descartamos imagens
+            # velhas antes de chamar a IA.
+            if len(self.historico) > COMPACTAR_HISTORICO_LIMITE:
+                self._set_status("Organizando o contexto...")
+                self.historico = compactar_historico(
+                    self.client, self.historico, model=MODEL
+                )
 
             self._set_status("Pensando...")
 
@@ -988,6 +1258,7 @@ class InterviewApp(QMainWindow):
                 return
             self.processando_mic = False
             self.habilitar_mic.emit(True)
+            self.habilitar_finalizar.emit(True)
             self._set_status("Sua vez")
         except Exception as exc:
             if not self.entrevista_ativa:
@@ -997,6 +1268,7 @@ class InterviewApp(QMainWindow):
             self.processando_mic = False
             self.mostrar_erro.emit(str(exc))
             self.habilitar_mic.emit(True)
+            self.habilitar_finalizar.emit(True)
 
     def _rebaixar_nivel_janela(self) -> None:
         """Volta a janela ao nível normal para que diálogos apareçam à frente."""
@@ -1050,6 +1322,121 @@ class InterviewApp(QMainWindow):
         else:
             self._retomar_topo()
 
+    def _encerrar_com_feedback(self) -> None:
+        if not self.entrevista_ativa or self._gerando_feedback:
+            return
+
+        # Pausa o "sempre no topo" para o diálogo não abrir atrás da flutuante.
+        self._pausar_topo()
+
+        dialogo = QMessageBox(self)
+        dialogo.setWindowTitle("Finalizar entrevista")
+        dialogo.setText("Encerrar a entrevista e pedir o feedback final?")
+        dialogo.setInformativeText(
+            "A entrevistadora vai resumir como foi o papo, apontar pontos fortes e "
+            "fracos e sugerir o que estudar e aprofundar."
+        )
+        dialogo.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        dialogo.setDefaultButton(QMessageBox.StandardButton.Yes)
+        dialogo.setWindowFlags(
+            dialogo.windowFlags() | Qt.WindowType.WindowStaysOnTopHint
+        )
+        dialogo.raise_()
+        dialogo.activateWindow()
+        resp = dialogo.exec()
+
+        if resp != QMessageBox.StandardButton.Yes:
+            self._retomar_topo()
+            return
+
+        self._gerando_feedback = True
+        parar_fala()
+        self.processando_mic = False
+        self.habilitar_mic.emit(False)
+        self.habilitar_finalizar.emit(False)
+        self.onda_ativa.emit(False, False)
+        self.ultima_fala_changed.emit("Gerando seu feedback final...")
+        self._set_status("Preparando feedback...")
+
+        # Garante que a última fala da entrevistadora entre no histórico antes
+        # de pedir o resumo (ela só é anexada no início do próximo turno).
+        if self.fala_entrevistador and (
+            not self.historico or self.historico[-1].get("role") == "user"
+        ):
+            self.historico.append(
+                {"role": "assistant", "content": self.fala_entrevistador}
+            )
+
+        threading.Thread(target=self._loop_feedback, daemon=True).start()
+
+    def _loop_feedback(self) -> None:
+        try:
+            texto = gerar_feedback_final(
+                self.client,
+                self.historico,
+                self.problema,
+                self.nome_candidato,
+                self.senioridade,
+                model=MODEL,
+            )
+        except Exception as exc:
+            self._gerando_feedback = False
+            if not self.entrevista_ativa:
+                return
+            self.mostrar_erro.emit(f"Não consegui gerar o feedback: {exc}")
+            self.habilitar_mic.emit(True)
+            self.habilitar_finalizar.emit(True)
+            self._set_status("Sua vez")
+            self._retomar_topo()
+            return
+
+        self.feedback_pronto.emit(texto)
+
+        # Lê o feedback em voz alta (versão limpa, sem markdown).
+        fala = limpar_texto(texto)
+        if fala and self.entrevista_ativa:
+            self._falar_entrevistador(fala)
+
+    def _on_feedback_pronto(self, texto: str) -> None:
+        self._gerando_feedback = False
+        self._set_status("Feedback")
+        self.ultima_fala_changed.emit("Feedback final pronto. Veja a janela ao lado.")
+
+        dialogo = QDialog(self)
+        dialogo.setWindowTitle("Feedback final da entrevista")
+        dialogo.setModal(True)
+        dialogo.setMinimumSize(560, 560)
+        dialogo.setWindowFlags(
+            dialogo.windowFlags() | Qt.WindowType.WindowStaysOnTopHint
+        )
+
+        layout = QVBoxLayout(dialogo)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        titulo = QLabel("Feedback da entrevistadora")
+        titulo.setStyleSheet("font-size: 16px; font-weight: 700;")
+        layout.addWidget(titulo)
+
+        corpo = QTextEdit()
+        corpo.setReadOnly(True)
+        corpo.setPlainText(texto)
+        layout.addWidget(corpo)
+
+        btn = QPushButton("Encerrar entrevista")
+        btn.setObjectName("primario")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.clicked.connect(dialogo.accept)
+        layout.addWidget(btn)
+
+        dialogo.raise_()
+        dialogo.activateWindow()
+        dialogo.exec()
+
+        self._finalizar_entrevista()
+
     def closeEvent(self, event) -> None:
         self.entrevista_ativa = False
         parar_fala()
@@ -1071,9 +1458,9 @@ class InterviewApp(QMainWindow):
         self.hide()
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setWindowFlags(Qt.WindowType.Window)
-        self.setMinimumSize(540, 480)
+        self.setMinimumSize(640, 640)
         self.setMaximumSize(16777215, 16777215)
-        self.resize(600, 680)
+        self.resize(720, 880)
         screen = QApplication.primaryScreen()
         if screen:
             geo = screen.availableGeometry()
@@ -1082,6 +1469,7 @@ class InterviewApp(QMainWindow):
                 geo.center().y() - self.height() // 2,
             )
         self.tela_inicial._popular_telas()
+        self.tela_inicial._popular_microfones()
         self.stack.setCurrentWidget(self.tela_inicial)
         self.show()
         self._aplicar_glass(raio=0.0)

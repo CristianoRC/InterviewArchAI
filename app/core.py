@@ -22,11 +22,15 @@ from openai import APIConnectionError, OpenAI
 from app.config import (
     API_KEY,
     BASE_URL,
+    COMPACTAR_HISTORICO_LIMITE,
+    COMPACTAR_MANTER_ULTIMAS,
     DIFICULDADE_PADRAO,
+    FEEDBACK_PROMPT_TEMPLATE,
     MODEL,
     NIVEIS_DIFICULDADE,
     SAMPLE_RATE,
     SCREENSHOT_MAX_DIM,
+    SILENCIO_SEG,
     STT_LANGUAGE,
     SYSTEM_PROMPT_TEMPLATE,
     VISION_MODEL,
@@ -179,6 +183,26 @@ def imagem_para_base64(caminho: str) -> str:
         return base64.b64encode(f.read()).decode("utf-8")
 
 
+def listar_microfones() -> list[tuple[int, str]]:
+    """Retorna dispositivos de entrada (índice, nome) disponíveis no sistema."""
+    dispositivos: list[tuple[int, str]] = []
+    for indice, dev in enumerate(sd.query_devices()):
+        if dev["max_input_channels"] > 0:
+            dispositivos.append((indice, dev["name"]))
+    return dispositivos
+
+
+def indice_microfone_padrao() -> int | None:
+    """Índice do microfone padrão do sistema, ou None se indisponível."""
+    try:
+        entrada = sd.default.device[0]
+        if isinstance(entrada, (list, tuple)):
+            return int(entrada[0]) if entrada else None
+        return int(entrada)
+    except Exception:
+        return None
+
+
 def carregar_whisper(on_status: StatusCallback | None = None) -> WhisperModel:
     global _whisper
     if _whisper is None:
@@ -193,11 +217,14 @@ def carregar_whisper(on_status: StatusCallback | None = None) -> WhisperModel:
 def gravar_audio_ate_silencio(
     on_status: StatusCallback | None = None,
     on_nivel: AudioLevelCallback | None = None,
+    on_falou: Callable[[], None] | None = None,
+    parar_evento: threading.Event | None = None,
+    dispositivo: int | None = None,
     duracao_max: float = 90.0,
-    silencio_seg: float = 2.0,
+    silencio_seg: float = SILENCIO_SEG,
     limiar_rms: float = 0.008,
 ) -> str | None:
-    """Grava até detectar silêncio após fala — um clique no mic basta."""
+    """Grava até silêncio após fala ou até parar_evento — modo híbrido."""
     if on_status:
         on_status("Ouvindo... fale agora.")
 
@@ -219,15 +246,21 @@ def gravar_audio_ate_silencio(
         dtype="float32",
         callback=callback,
         blocksize=bloco,
+        device=dispositivo,
     ):
         while time.time() - inicio < duracao_max:
+            if parar_evento is not None and parar_evento.is_set():
+                break
             time.sleep(0.08)
             if not frames:
                 continue
             recente = np.concatenate(frames[-3:])
             rms = float(np.sqrt(np.mean(recente**2)))
             if rms >= limiar_rms:
-                falou = True
+                if not falou:
+                    falou = True
+                    if on_falou:
+                        on_falou()
                 silencio_desde = None
             elif falou:
                 if silencio_desde is None:
@@ -244,14 +277,23 @@ def gravar_audio_ate_silencio(
     return tmp.name
 
 
-def gravar_audio(parar_evento: threading.Event) -> str | None:
+def gravar_audio(
+    parar_evento: threading.Event,
+    dispositivo: int | None = None,
+) -> str | None:
     frames: list[np.ndarray] = []
 
     def callback(indata: np.ndarray, _f, _t, _s) -> None:
         if not parar_evento.is_set():
             frames.append(indata.copy())
 
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32", callback=callback):
+    with sd.InputStream(
+        samplerate=SAMPLE_RATE,
+        channels=1,
+        dtype="float32",
+        callback=callback,
+        device=dispositivo,
+    ):
         parar_evento.wait()
 
     if not frames:
@@ -304,6 +346,177 @@ def montar_system_prompt(
     return SYSTEM_PROMPT_TEMPLATE.format(
         problema=problema, nome=nome, dificuldade=instrucao_dificuldade
     )
+
+
+def montar_feedback_prompt(
+    problema: str,
+    nome: str = "Candidato",
+    senioridade: str = DIFICULDADE_PADRAO,
+) -> str:
+    instrucao_dificuldade = NIVEIS_DIFICULDADE.get(
+        senioridade, NIVEIS_DIFICULDADE[DIFICULDADE_PADRAO]
+    )
+    return FEEDBACK_PROMPT_TEMPLATE.format(
+        problema=problema, nome=nome, dificuldade=instrucao_dificuldade
+    )
+
+
+def gerar_feedback_final(
+    client: OpenAI,
+    historico: list[dict],
+    problema: str,
+    nome: str = "Candidato",
+    senioridade: str = DIFICULDADE_PADRAO,
+    model: str = MODEL,
+) -> str:
+    feedback_system = montar_feedback_prompt(problema, nome, senioridade)
+    gatilho = (
+        "A entrevista terminou. Saindo do papel de entrevistador provocador, me dê "
+        "agora o seu feedback final completo e honesto sobre o meu desempenho, "
+        "seguindo a estrutura combinada."
+    )
+    mensagens = (
+        [{"role": "system", "content": feedback_system}]
+        + historico
+        + [{"role": "user", "content": gatilho}]
+    )
+    resposta = client.chat.completions.create(model=model, messages=mensagens)
+    return resposta.choices[0].message.content.strip()
+
+
+RESUMO_PREFIXO = "Resumo da entrevista até aqui (contexto para você manter a linha de raciocínio):"
+
+
+def _tem_imagem(msg: dict) -> bool:
+    content = msg.get("content")
+    return isinstance(content, list) and any(
+        bloco.get("type") == "image_url" for bloco in content
+    )
+
+
+def _texto_da_mensagem(msg: dict) -> str:
+    content = msg.get("content")
+    if isinstance(content, list):
+        for bloco in content:
+            if bloco.get("type") == "text":
+                return bloco.get("text", "")
+        return ""
+    return content or ""
+
+
+def _eh_resumo(msg: dict) -> bool:
+    return (
+        msg.get("role") == "system"
+        and isinstance(msg.get("content"), str)
+        and msg["content"].startswith(RESUMO_PREFIXO)
+    )
+
+
+def _remover_imagens_antigas(historico: list[dict]) -> list[dict]:
+    """Mantém a imagem apenas na última mensagem que tem imagem; nas anteriores
+    substitui o anexo por um marcador de texto, para poupar tokens de visão."""
+    idx_ultima = -1
+    for i, msg in enumerate(historico):
+        if _tem_imagem(msg):
+            idx_ultima = i
+    if idx_ultima == -1:
+        return historico
+
+    novo: list[dict] = []
+    for i, msg in enumerate(historico):
+        if _tem_imagem(msg) and i != idx_ultima:
+            texto = _texto_da_mensagem(msg).strip()
+            marcador = "[diagrama enviado antes, removido do histórico]"
+            texto = f"{texto} {marcador}".strip() if texto else marcador
+            novo.append({"role": msg.get("role", "user"), "content": texto})
+        else:
+            novo.append(msg)
+    return novo
+
+
+def _mensagens_para_transcricao(mensagens: list[dict]) -> str:
+    linhas: list[str] = []
+    for msg in mensagens:
+        if _eh_resumo(msg):
+            continue
+        papel = "Entrevistadora" if msg.get("role") == "assistant" else "Candidato"
+        texto = _texto_da_mensagem(msg).strip()
+        if _tem_imagem(msg):
+            texto = f"{texto} [enviou um diagrama]".strip()
+        if texto:
+            linhas.append(f"{papel}: {texto}")
+    return "\n".join(linhas)
+
+
+def _resumir_trecho(
+    client: OpenAI,
+    resumo_atual: str,
+    mensagens_antigas: list[dict],
+    model: str,
+) -> str:
+    instrucao = (
+        "Você resume entrevistas de System Design para preservar o contexto sem estourar "
+        "a memória do modelo. Gere um resumo objetivo em português, em tópicos curtos, do "
+        "que JÁ aconteceu na entrevista: o problema, requisitos e escala definidos, decisões "
+        "e componentes que o candidato propôs, justificativas dadas, pontos fortes e fracos "
+        "já observados e o que ficou pendente. Preserve fatos e números exatos. Não invente "
+        "nada que não tenha sido dito. Seja conciso."
+    )
+    partes: list[str] = []
+    if resumo_atual:
+        partes.append("Resumo anterior (já consolidado):\n" + resumo_atual)
+    partes.append(
+        "Novas mensagens da entrevista a incorporar ao resumo:\n"
+        + _mensagens_para_transcricao(mensagens_antigas)
+    )
+    mensagens = [
+        {"role": "system", "content": instrucao},
+        {"role": "user", "content": "\n\n".join(partes)},
+    ]
+    resposta = client.chat.completions.create(model=model, messages=mensagens)
+    resumo = resposta.choices[0].message.content.strip()
+    return f"{RESUMO_PREFIXO}\n{resumo}"
+
+
+def compactar_historico(
+    client: OpenAI,
+    historico: list[dict],
+    model: str = MODEL,
+    limite: int = COMPACTAR_HISTORICO_LIMITE,
+    manter_ultimas: int = COMPACTAR_MANTER_ULTIMAS,
+) -> list[dict]:
+    """Evita estourar o contexto em entrevistas longas.
+
+    1) Descarta imagens antigas (mantém só o último diagrama).
+    2) Quando o histórico passa do limite, resume as mensagens mais antigas
+       num único bloco e mantém apenas as últimas `manter_ultimas` literais.
+    Retorna um novo histórico (não muta o original)."""
+    historico = _remover_imagens_antigas(list(historico))
+
+    if len(historico) <= limite:
+        return historico
+
+    resumo_atual = ""
+    corpo = historico
+    if historico and _eh_resumo(historico[0]):
+        resumo_atual = historico[0]["content"]
+        corpo = historico[1:]
+
+    if len(corpo) <= manter_ultimas:
+        cabeca = [{"role": "system", "content": resumo_atual}] if resumo_atual else []
+        return cabeca + corpo
+
+    antigas = corpo[:-manter_ultimas]
+    recentes = corpo[-manter_ultimas:]
+
+    try:
+        novo_resumo = _resumir_trecho(client, resumo_atual, antigas, model)
+    except Exception:
+        # Se a sumarização falhar, ainda devolvemos o histórico sem imagens
+        # antigas para não travar a entrevista por causa da compactação.
+        return historico
+
+    return [{"role": "system", "content": novo_resumo}] + recentes
 
 
 def obter_resposta_ia(
