@@ -22,12 +22,16 @@ from openai import APIConnectionError, OpenAI
 from app.config import (
     API_KEY,
     BASE_URL,
+    CHARS_POR_TOKEN,
     COMPACTAR_HISTORICO_LIMITE,
     COMPACTAR_MANTER_ULTIMAS,
+    CONTEXTO_MAX_TOKENS,
     DIFICULDADE_PADRAO,
     FEEDBACK_PROMPT_TEMPLATE,
+    IMAGEM_CUSTO_TOKENS,
     MODEL,
     NIVEIS_DIFICULDADE,
+    RESPOSTA_MAX_TOKENS,
     SAMPLE_RATE,
     SCREENSHOT_MAX_DIM,
     SILENCIO_SEG,
@@ -50,6 +54,34 @@ def criar_cliente(base_url: str = BASE_URL, api_key: str = API_KEY) -> OpenAI:
     return OpenAI(base_url=base_url, api_key=api_key)
 
 
+def mensagem_erro_amigavel(exc: Exception) -> str:
+    """Traduz erros técnicos do LM Studio em mensagens acionáveis para o usuário."""
+    texto = str(exc)
+    baixo = texto.lower()
+
+    if isinstance(exc, APIConnectionError) or "connection" in baixo:
+        return (
+            "Perdi a conexão com o LM Studio. Confirme que o servidor local está "
+            "ligado em 'Local Server' (porta 1234) e tente de novo."
+        )
+
+    # Estouro de janela de contexto (n_ctx pequeno demais para o request).
+    if "context" in baixo and ("exceed" in baixo or "context size" in baixo):
+        tokens = re.search(r"\((\d+)\s*tokens?\)", texto)
+        ctx = re.search(r"context size \((\d+)", texto)
+        detalhe = ""
+        if tokens and ctx:
+            detalhe = f" (precisa de ~{tokens.group(1)} tokens, mas só há {ctx.group(1)})"
+        return (
+            f"A janela de contexto do modelo é pequena demais para esta conversa{detalhe}.\n\n"
+            "Como resolver: no LM Studio, recarregue o modelo aumentando o "
+            "'Context Length' (n_ctx) para 8192 ou mais (o Qwen3 suporta até 32768). "
+            "Depois reinicie o servidor local e tente novamente."
+        )
+
+    return texto
+
+
 def validar_servidor(client: OpenAI) -> tuple[bool, str]:
     try:
         client.models.list()
@@ -66,6 +98,10 @@ def validar_servidor(client: OpenAI) -> tuple[bool, str]:
 
 def limpar_texto(texto: str) -> str:
     texto = re.sub(r"\x1b\[[0-9;]*m", "", texto)
+    # Remove o "raciocínio" que modelos como o Qwen3 emitem (<think>...</think>).
+    # Cobre também o caso de a tag de abertura vir cortada/ausente.
+    texto = re.sub(r"<think>[\s\S]*?</think>", "", texto, flags=re.IGNORECASE)
+    texto = re.sub(r"^[\s\S]*?</think>", "", texto, flags=re.IGNORECASE)
     texto = re.sub(r"```[\s\S]*?```", "", texto)
     texto = re.sub(r"`([^`]+)`", r"\1", texto)
     texto = re.sub(r"\*\*([^*]+)\*\*", r"\1", texto)
@@ -375,12 +411,24 @@ def gerar_feedback_final(
         "agora o seu feedback final completo e honesto sobre o meu desempenho, "
         "seguindo a estrutura combinada."
     )
+    # O feedback é mais longo: reservamos uma fatia maior do contexto para a saída
+    # e encaixamos o histórico no que sobrar.
+    reserva_feedback = min(CONTEXTO_MAX_TOKENS // 2, 1200)
+    historico = garantir_contexto(
+        historico,
+        feedback_system,
+        client=client,
+        model=model,
+        reserva_resposta=reserva_feedback + estimar_tokens_texto(gatilho),
+    )
     mensagens = (
         [{"role": "system", "content": feedback_system}]
         + historico
         + [{"role": "user", "content": gatilho}]
     )
-    resposta = client.chat.completions.create(model=model, messages=mensagens)
+    resposta = client.chat.completions.create(
+        model=model, messages=mensagens, max_tokens=reserva_feedback
+    )
     return resposta.choices[0].message.content.strip()
 
 
@@ -402,6 +450,25 @@ def _texto_da_mensagem(msg: dict) -> str:
                 return bloco.get("text", "")
         return ""
     return content or ""
+
+
+def estimar_tokens_texto(texto: str) -> int:
+    """Estimativa grosseira (conservadora) de tokens para um texto."""
+    if not texto:
+        return 0
+    return int(len(texto) / CHARS_POR_TOKEN) + 1
+
+
+def estimar_tokens_mensagem(msg: dict) -> int:
+    """Estima os tokens de uma mensagem, somando o custo da imagem se houver."""
+    total = estimar_tokens_texto(_texto_da_mensagem(msg))
+    if _tem_imagem(msg):
+        total += IMAGEM_CUSTO_TOKENS
+    return total + 4  # pequena folga por mensagem (papel, separadores do template)
+
+
+def estimar_tokens(mensagens: list[dict]) -> int:
+    return sum(estimar_tokens_mensagem(m) for m in mensagens)
 
 
 def _eh_resumo(msg: dict) -> bool:
@@ -484,16 +551,22 @@ def compactar_historico(
     model: str = MODEL,
     limite: int = COMPACTAR_HISTORICO_LIMITE,
     manter_ultimas: int = COMPACTAR_MANTER_ULTIMAS,
+    orcamento_tokens: int | None = None,
 ) -> list[dict]:
     """Evita estourar o contexto em entrevistas longas.
 
     1) Descarta imagens antigas (mantém só o último diagrama).
-    2) Quando o histórico passa do limite, resume as mensagens mais antigas
-       num único bloco e mantém apenas as últimas `manter_ultimas` literais.
+    2) Se o histórico passa do limite de mensagens OU do orçamento de tokens,
+       resume as mensagens mais antigas num único bloco e mantém apenas as
+       últimas `manter_ultimas` literais.
     Retorna um novo histórico (não muta o original)."""
     historico = _remover_imagens_antigas(list(historico))
 
-    if len(historico) <= limite:
+    passou_limite = len(historico) > limite
+    passou_orcamento = (
+        orcamento_tokens is not None and estimar_tokens(historico) > orcamento_tokens
+    )
+    if not passou_limite and not passou_orcamento:
         return historico
 
     resumo_atual = ""
@@ -519,6 +592,55 @@ def compactar_historico(
     return [{"role": "system", "content": novo_resumo}] + recentes
 
 
+def _forcar_caber(mensagens: list[dict], orcamento: int) -> list[dict]:
+    """Última linha de defesa: derruba mensagens (das mais antigas para as mais
+    recentes) até o conjunto caber no orçamento, sempre preservando o system
+    prompt (primeiro item) e a última mensagem. Evita o erro 400 a todo custo."""
+    if estimar_tokens(mensagens) <= orcamento or len(mensagens) <= 2:
+        return mensagens
+
+    cabeca = [mensagens[0]]  # system prompt
+    miolo = mensagens[1:-1]
+    cauda = [mensagens[-1]]  # mensagem mais recente (a fala atual)
+
+    while miolo and estimar_tokens(cabeca + miolo + cauda) > orcamento:
+        miolo.pop(0)
+
+    return cabeca + miolo + cauda
+
+
+def garantir_contexto(
+    historico: list[dict],
+    system_prompt: str,
+    client: OpenAI | None = None,
+    model: str = MODEL,
+    max_contexto: int = CONTEXTO_MAX_TOKENS,
+    reserva_resposta: int = RESPOSTA_MAX_TOKENS,
+) -> list[dict]:
+    """Garante que system prompt + histórico caibam na janela do modelo.
+
+    Calcula o orçamento disponível (janela menos a reserva para a resposta e o
+    custo do system prompt) e compacta o histórico até caber. Se ainda não
+    couber após resumir, derruba as rodadas mais antigas. Retorna o histórico
+    ajustado (não muta o original)."""
+    orcamento_historico = max(
+        0, max_contexto - reserva_resposta - estimar_tokens_texto(system_prompt) - 8
+    )
+
+    ajustado = list(historico)
+    if client is not None:
+        ajustado = compactar_historico(
+            client, ajustado, model=model, orcamento_tokens=orcamento_historico
+        )
+    else:
+        ajustado = _remover_imagens_antigas(ajustado)
+
+    return _forcar_caber(
+        [{"role": "system", "content": system_prompt}] + ajustado,
+        max_contexto - reserva_resposta,
+    )[1:]
+
+
 def obter_resposta_ia(
     client: OpenAI,
     historico: list[dict],
@@ -529,6 +651,7 @@ def obter_resposta_ia(
     nome: str = "",
 ) -> str:
     if historico:
+        historico = garantir_contexto(historico, system_prompt, client=client, model=model)
         mensagens = [{"role": "system", "content": system_prompt}] + historico
     else:
         if nome:
@@ -555,5 +678,7 @@ def obter_resposta_ia(
     resposta = client.chat.completions.create(
         model=modelo_escolhido,
         messages=mensagens,
+        max_tokens=RESPOSTA_MAX_TOKENS,
+        temperature=0.4,
     )
     return resposta.choices[0].message.content.strip()

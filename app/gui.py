@@ -37,7 +37,6 @@ from PyQt6.QtWidgets import (
 
 from app.config import (
     BASE_URL,
-    COMPACTAR_HISTORICO_LIMITE,
     DIFICULDADE_PADRAO,
     MODEL,
     PROBLEMA,
@@ -51,14 +50,15 @@ OPCOES_SENIORIDADE = [
 ]
 from app.core import (
     capturar_tela,
-    compactar_historico,
     criar_cliente,
     falar_texto,
+    garantir_contexto,
     gerar_feedback_final,
     gravar_audio_ate_silencio,
     indice_microfone_padrao,
     limpar_texto,
     listar_microfones,
+    mensagem_erro_amigavel,
     montar_mensagem_usuario,
     montar_system_prompt,
     obter_resposta_ia,
@@ -954,6 +954,7 @@ class InterviewApp(QMainWindow):
         self._parar_gravacao = threading.Event()
 
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self._aplicar_fechar_real()
 
         self.stack = QStackedWidget()
         self.stack.setObjectName("root")
@@ -966,6 +967,10 @@ class InterviewApp(QMainWindow):
         self.setStyleSheet(montar_estilo(fonte_sistema()))
         self._conectar_sinais()
         self._verificar_conexao()
+
+    def _aplicar_fechar_real(self) -> None:
+        """No macOS o botão vermelho só esconde a janela; forçamos encerrar o app."""
+        self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, True)
 
     def _aplicar_glass(self, raio: float = 0.0) -> None:
         """Reservado para vidro nativo. Desativado: o NSVisualEffectView cobria
@@ -1170,7 +1175,7 @@ class InterviewApp(QMainWindow):
         except Exception as exc:
             if not self.entrevista_ativa:
                 return
-            self.mostrar_erro.emit(str(exc))
+            self.mostrar_erro.emit(mensagem_erro_amigavel(exc))
             self.voltar_setup.emit()
 
     def _ao_alternar_tela(self) -> None:
@@ -1231,13 +1236,13 @@ class InterviewApp(QMainWindow):
             self.historico.append(mensagem)
 
             # Em entrevistas longas o histórico cresce e pode estourar o contexto
-            # do modelo local: resumimos as rodadas antigas e descartamos imagens
-            # velhas antes de chamar a IA.
-            if len(self.historico) > COMPACTAR_HISTORICO_LIMITE:
-                self._set_status("Organizando o contexto...")
-                self.historico = compactar_historico(
-                    self.client, self.historico, model=MODEL
-                )
+            # do modelo local: encaixamos o histórico no orçamento de tokens
+            # (resumindo rodadas antigas e descartando imagens velhas) antes de
+            # chamar a IA, persistindo o resultado para não re-resumir toda vez.
+            self._set_status("Organizando o contexto...")
+            self.historico = garantir_contexto(
+                self.historico, self.system_prompt, client=self.client, model=MODEL
+            )
 
             self._set_status("Pensando...")
 
@@ -1266,7 +1271,7 @@ class InterviewApp(QMainWindow):
             self.mic_gravando.emit(False)
             self.onda_ativa.emit(False, False)
             self.processando_mic = False
-            self.mostrar_erro.emit(str(exc))
+            self.mostrar_erro.emit(mensagem_erro_amigavel(exc))
             self.habilitar_mic.emit(True)
             self.habilitar_finalizar.emit(True)
 
@@ -1385,7 +1390,9 @@ class InterviewApp(QMainWindow):
             self._gerando_feedback = False
             if not self.entrevista_ativa:
                 return
-            self.mostrar_erro.emit(f"Não consegui gerar o feedback: {exc}")
+            self.mostrar_erro.emit(
+                f"Não consegui gerar o feedback.\n\n{mensagem_erro_amigavel(exc)}"
+            )
             self.habilitar_mic.emit(True)
             self.habilitar_finalizar.emit(True)
             self._set_status("Sua vez")
@@ -1440,7 +1447,10 @@ class InterviewApp(QMainWindow):
     def closeEvent(self, event) -> None:
         self.entrevista_ativa = False
         parar_fala()
+        if hasattr(self, "_timer_topo"):
+            self._timer_topo.stop()
         event.accept()
+        QApplication.instance().quit()
 
     def _finalizar_entrevista(self) -> None:
         self.entrevista_ativa = False
@@ -1472,12 +1482,14 @@ class InterviewApp(QMainWindow):
         self.tela_inicial._popular_microfones()
         self.stack.setCurrentWidget(self.tela_inicial)
         self.show()
+        self._aplicar_fechar_real()
         self._aplicar_glass(raio=0.0)
         self._verificar_conexao()
 
 
 def run() -> None:
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(True)
     app.aboutToQuit.connect(parar_fala)
     app.setWindowIcon(carregar_icone())
     font = QFont(fonte_sistema())
@@ -1486,5 +1498,6 @@ def run() -> None:
 
     window = InterviewApp()
     window.show()
+    window._aplicar_fechar_real()
     window._aplicar_glass(raio=0.0)
     sys.exit(app.exec())
