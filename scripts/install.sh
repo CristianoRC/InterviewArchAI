@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh — configura o ambiente completo do local-arch-interviewer
+# install.sh — configura o ambiente completo do interview-arch-ai
 
 set -e
 
@@ -8,7 +8,7 @@ cd "$ROOT_DIR"
 
 echo ""
 echo "======================================================"
-echo "  local-arch-interviewer — Instalação"
+echo "  interview-arch-ai — Instalação"
 echo "======================================================"
 echo ""
 
@@ -43,8 +43,8 @@ echo ""
 echo "  Próximos passos:"
 echo "  1. Abra o LM Studio e inicie o Local Server (porta 1234)"
 echo "  2. Carregue um modelo com visão (ex: qwen/qwen3-vl-8b)"
-echo "  3. Edite o SYSTEM_PROMPT em local_arch_interviewer.py"
-echo "  4. Execute: ./scripts/run.sh  (abre o app desktop)"
-echo "     Ou via CLI: python3 local_arch_interviewer.py"
+  echo "  3. Edite o SYSTEM_PROMPT em interview_arch_ai.py"
+  echo "  4. Execute: ./scripts/run.sh  (abre o app desktop)"
+  echo "     Ou via CLI: python3 interview_arch_ai.py"
 echo "======================================================"
 echo ""

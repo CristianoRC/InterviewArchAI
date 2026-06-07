@@ -24,21 +24,17 @@ def _smoothstep(mask: Image.Image, lo: int, hi: int) -> Image.Image:
 
 def main() -> None:
     art = Image.open(SRC).convert("RGB")
-    # Encaixa a arte inteira pela largura, preservando todos os nós.
     nova_alt = round(art.height * SIZE / art.width)
     art = art.resize((SIZE, nova_alt), Image.LANCZOS)
 
     base_art = Image.new("RGB", (SIZE, SIZE), (0, 0, 0))
     base_art.paste(art, (0, (SIZE - nova_alt) // 2))
 
-    # Máscara por "azulado" (B - R): isola o neon ciano/azul e descarta o
-    # fundo/painel acinzentado do "cartão" original (que tem R alto).
     r, _g, b = base_art.split()
     azul = ImageChops.subtract(b, r)
     alpha = _smoothstep(azul, 45, 110)
     alpha = alpha.filter(ImageFilter.GaussianBlur(0.6))
 
-    # Fundo transparente: o neon vira RGBA usando a máscara como canal alpha.
     final = base_art.convert("RGBA")
     final.putalpha(alpha)
     final.save(OUT)

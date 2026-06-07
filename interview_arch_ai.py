@@ -1,6 +1,6 @@
 """
-local-arch-interviewer (CLI)
-============================
+interview-arch-ai (CLI)
+=======================
 Versão terminal — mantida para compatibilidade.
 Para a interface desktop, execute: python -m app.main
 """
@@ -74,7 +74,7 @@ def loop_entrevista(client: OpenAI, problema: str, senioridade: str = DIFICULDAD
     system_prompt = montar_system_prompt(problema, senioridade=senioridade)
 
     print("\n" + "=" * 60)
-    print("  Local Arch Interviewer  —  System Design por voz")
+    print("  InterviewArchAI  —  System Design por voz")
     print("  Fale 'sair' a qualquer momento para encerrar.")
     print("=" * 60)
     print(f"\nProblema: {problema}\n")

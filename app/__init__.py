@@ -1,1 +1,1 @@
-"""Local Arch Interviewer — app desktop para entrevistas de System Design."""
+"""InterviewArchAI — app desktop para entrevistas de System Design."""

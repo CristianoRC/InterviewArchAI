@@ -38,6 +38,7 @@ from app.config import (
     SCREENSHOT_MAX_DIM,
     STT_LANGUAGE,
     SYSTEM_PROMPT_TEMPLATE,
+    THINKING_EXTRA_BODY,
     VISION_MODEL,
     VOICE,
     WHISPER_MODEL_SIZE,
@@ -99,9 +100,12 @@ def validar_servidor(client: OpenAI) -> tuple[bool, str]:
 
 def limpar_texto(texto: str) -> str:
     texto = re.sub(r"\x1b\[[0-9;]*m", "", texto)
-    # Remove o "raciocínio" que modelos como o Qwen3 emitem (<think>...</think>).
-    # Cobre também o caso de a tag de abertura vir cortada/ausente.
+    # Remove blocos <think>...</think> completos que o Qwen3 emite antes de responder.
     texto = re.sub(r"<think>[\s\S]*?</think>", "", texto, flags=re.IGNORECASE)
+    # Remove bloco <think> truncado (modelo cortado pelo limite de tokens antes de
+    # fechar a tag): tudo desde <think> até o fim do texto vira raciocínio interno.
+    texto = re.sub(r"<think>[\s\S]*$", "", texto, flags=re.IGNORECASE)
+    # Cobre o caso raro da tag de abertura ter vindo cortada mas o </think> existe.
     texto = re.sub(r"^[\s\S]*?</think>", "", texto, flags=re.IGNORECASE)
     texto = re.sub(r"```[\s\S]*?```", "", texto)
     texto = re.sub(r"`([^`]+)`", r"\1", texto)
@@ -488,9 +492,8 @@ def gerar_feedback_final(
         "agora o seu feedback final completo e honesto sobre o meu desempenho, "
         "seguindo a estrutura combinada."
     )
-    # O feedback é mais longo: reservamos uma fatia maior do contexto para a saída
-    # e encaixamos o histórico no que sobrar.
-    reserva_feedback = min(CONTEXTO_MAX_TOKENS // 2, 1200)
+    
+    reserva_feedback = min(CONTEXTO_MAX_TOKENS // 2, 1600)
     historico = garantir_contexto(
         historico,
         feedback_system,
@@ -504,7 +507,7 @@ def gerar_feedback_final(
         + [{"role": "user", "content": gatilho}]
     )
     resposta = client.chat.completions.create(
-        model=model, messages=mensagens, max_tokens=reserva_feedback
+        model=model, messages=mensagens, max_tokens=reserva_feedback, temperature=0.5
     )
     return resposta.choices[0].message.content.strip()
 
@@ -624,7 +627,12 @@ def _resumir_trecho(
         {"role": "system", "content": instrucao},
         {"role": "user", "content": "\n\n".join(partes)},
     ]
-    resposta = client.chat.completions.create(model=model, messages=mensagens)
+    resposta = client.chat.completions.create(
+        model=model,
+        messages=mensagens,
+        temperature=0.3,
+        extra_body=THINKING_EXTRA_BODY,
+    )
     resumo = resposta.choices[0].message.content.strip()
     return f"{RESUMO_PREFIXO}\n{resumo}"
 
@@ -758,6 +766,7 @@ def obter_resposta_ia(
         messages=mensagens,
         max_tokens=RESPOSTA_MAX_TOKENS,
         temperature=0.4,
+        extra_body=THINKING_EXTRA_BODY,
     )
     escolha = resposta.choices[0]
     texto = (escolha.message.content or "").strip()

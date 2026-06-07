@@ -607,7 +607,7 @@ class TelaInicial(QWidget):
         layout.setContentsMargins(44, 40, 44, 36)
         layout.setSpacing(0)
 
-        titulo = QLabel("Local Arch Interviewer")
+        titulo = QLabel("InterviewArchAI")
         titulo.setObjectName("titulo")
         titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(titulo)
@@ -937,7 +937,7 @@ class InterviewApp(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Local Arch Interviewer")
+        self.setWindowTitle("InterviewArchAI")
         self.setWindowIcon(carregar_icone())
         self.resize(720, 880)
         self.setMinimumSize(640, 640)

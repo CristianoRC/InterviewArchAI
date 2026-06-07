@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/app_icon_v2.png" alt="Talk System Design logo" width="200"/>
+  <img src="assets/app_icon_v2.png" alt="InterviewArchAI logo" width="200"/>
 </p>
 
-<h1 align="center">Talk System Design</h1>
+<h1 align="center">InterviewArchAI</h1>
 
 <p align="center">
   Simule entrevistas de System Design por voz com IA rodando <strong>100% local</strong> via <a href="https://lmstudio.ai">LM Studio</a>.
@@ -15,11 +15,13 @@
   <img src="https://img.shields.io/badge/licença-MIT-green" alt="MIT License"/>
 </p>
 
+> **Aviso:** Este projeto é um **experimento de estudo** sobre o uso de IA rodando localmente e suas possibilidades. Ele funciona, mas ainda apresenta limitações — principalmente o modelo de exemplo (`qwen/qwen3-vl-8b`) alucinando em entrevistas mais longas por ter uma janela de contexto pequena. Não espere um produto finalizado: é um ponto de partida para explorar o que dá pra fazer com LLMs 100% offline.
+
 ---
 
 ## O que é
 
-**Talk System Design** é um entrevistador de System Design que funciona **100% offline** na sua máquina. Ele usa um modelo de linguagem com visão (via LM Studio), reconhecimento de voz local (Whisper) e síntese de voz em PT-BR (Edge TTS) para conduzir entrevistas técnicas interativas por voz.
+**InterviewArchAI** é um entrevistador de System Design que funciona **100% offline** na sua máquina. Ele usa um modelo de linguagem com visão (via LM Studio), reconhecimento de voz local (Whisper) e síntese de voz em PT-BR (Edge TTS) para conduzir entrevistas técnicas interativas por voz.
 
 Disponível como **app desktop para macOS** (interface gráfica) ou via **terminal (CLI)**.
 
@@ -83,7 +85,7 @@ python3 -m app.main
 
 ```bash
 source .venv/bin/activate
-python3 local_arch_interviewer.py
+python3 interview_arch_ai.py
 ```
 
 ---
@@ -152,7 +154,7 @@ talk-system-design/
 │   └── main.py                 # Ponto de entrada do app
 ├── assets/
 │   └── app_icon_v2.png         # Logo do projeto
-├── local_arch_interviewer.py   # Versão CLI (terminal)
+├── interview_arch_ai.py        # Versão CLI (terminal)
 ├── requirements.txt
 ├── scripts/
 │   ├── install.sh              # Instalação do ambiente

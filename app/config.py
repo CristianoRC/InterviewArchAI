@@ -1,4 +1,4 @@
-"""Configurações padrão do Local Arch Interviewer."""
+"""Configurações padrão do InterviewArchAI."""
 
 BASE_URL = "http://localhost:1234/v1"
 API_KEY = "lm-studio"
@@ -47,6 +47,15 @@ RESPOSTA_MAX_TOKENS = 400
 # Estimativa grosseira de tokens: caracteres por token. ~3 é conservador para
 # português no tokenizer do Qwen (melhor superestimar do que estourar).
 CHARS_POR_TOKEN = 3.0
+
+# Qwen3 gera blocos <think>...</think> antes de responder. Nas falas da entrevista
+# (curtas, 1-2 frases) esses tokens desperdiçam a janela de contexto e podem vazar
+# conteúdo de raciocínio interno se o modelo for cortado antes de fechar a tag.
+# Passar enable_thinking=False desativa esse modo para chamadas onde não é necessário.
+# O feedback final mantém thinking ativo (tarefa complexa que se beneficia de mais
+# raciocínio); por isso usa max_tokens maior e esta flag não é aplicada lá.
+THINKING_EXTRA_BODY: dict = {"chat_template_kwargs": {"enable_thinking": False}}
+
 # Custo aproximado, em tokens, de uma imagem (diagrama) anexada no Qwen3-VL.
 # Imagem pesa MUITO mais que texto; por isso, quando o contexto aperta, a imagem
 # é a primeira coisa a ser descartada.
