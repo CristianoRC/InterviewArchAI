@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/app_icon_v2.png" alt="InterviewArchAI logo" width="200"/>
+  <img src="assets/app_icon.png" alt="InterviewArchAI logo" width="200"/>
 </p>
 
 <h1 align="center">InterviewArchAI</h1>
@@ -14,10 +14,6 @@
   <img src="https://img.shields.io/badge/LM%20Studio-local%20LLM-blueviolet" alt="LM Studio"/>
   <img src="https://img.shields.io/badge/licença-MIT-green" alt="MIT License"/>
 </p>
-
-> **Aviso:** Este projeto é um **experimento de estudo** sobre o uso de IA rodando localmente e suas possibilidades. Ele funciona, mas ainda apresenta limitações — principalmente o modelo de exemplo (`qwen/qwen3-vl-8b`) alucinando em entrevistas mais longas por ter uma janela de contexto pequena. Não espere um produto finalizado: é um ponto de partida para explorar o que dá pra fazer com LLMs 100% offline.
-
----
 
 ## O que é
 
@@ -123,23 +119,7 @@ SCREENSHOT_MAX_DIM = 1024  # maior dimensão (px) do screenshot enviado ao model
 ```
 
 O screenshot é redimensionado (via `sips`) para que sua maior dimensão não passe de `SCREENSHOT_MAX_DIM` antes de ser enviado. Como os "tokens de visão" escalam com a resolução da imagem, esse limite é o principal fator para não estourar a janela de contexto. Diminua para `768` se ainda estourar; aumente para `1280+` se precisar de mais detalhe nos diagramas.
-
----
-
-## Troubleshooting
-
-### Erro: `request (N tokens) exceeds the available context size (4096 tokens)`
-
-Esse erro vem do **LM Studio**, não do app: o modelo foi carregado com uma janela de contexto pequena (geralmente 4096 tokens) e a requisição — system prompt + histórico + screenshot — não cabe.
-
-**Solução — use o contexto máximo do modelo no LM Studio:**
-
-1. Em **My Models** (ou na aba do servidor), **descarregue** (Eject) o modelo.
-2. Ao recarregar `qwen/qwen3-vl-8b`, abra as opções de **load**.
-3. Em **Context Length**, arraste o valor para o **máximo suportado pelo modelo** (o Qwen3-VL suporta muito mais que 4096). Comece com **8192** e suba se sua máquina aguentar.
-4. Reinicie o **Local Server** (porta 1234).
-
-> Contexto maior usa mais RAM/VRAM. Se a máquina ficar lenta ou o load falhar, reduza o Context Length e/ou diminua `SCREENSHOT_MAX_DIM` em `app/config.py`.
+ENSHOT_MAX_DIM` em `app/config.py`.
 
 ---
 
@@ -161,6 +141,12 @@ talk-system-design/
 │   └── run.sh                  # Inicia o app desktop
 └── README.md
 ```
+
+---
+
+## Aviso
+
+> **Aviso:** Este projeto é um **experimento de estudo** sobre o uso de IA rodando localmente e suas possibilidades. Ele funciona, mas ainda apresenta limitações — principalmente o modelo de exemplo (`qwen/qwen3-vl-8b`) alucinando em entrevistas mais longas por ter uma janela de contexto pequena. Não espere um produto finalizado: é um ponto de partida para explorar o que dá pra fazer com LLMs 100% offline.
 
 ---
 
