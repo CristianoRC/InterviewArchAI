@@ -26,10 +26,11 @@ Disponível como **app desktop para macOS** (interface gráfica) ou via **termin
 ## Como funciona
 
 1. O entrevistador (IA local) faz uma pergunta — o texto aparece na tela e é **falado em PT-BR** via Edge TTS.
-2. Você clica em **Gravar Resposta** e fala no microfone.
+2. Você clica no **microfone** e fala sua resposta. A gravação **não para sozinha no silêncio**: você clica em **Pronto** quando terminar de falar e quiser passar a vez.
 3. O Whisper local transcreve sua fala automaticamente.
-4. Um **screenshot da sua tela** é capturado e enviado junto com o texto para o modelo analisar diagramas ou código visíveis.
-5. O ciclo se repete até você encerrar a entrevista ou falar "sair".
+4. Se o botão **🖥 (anexar tela)** estiver ligado, um **screenshot da sua tela** é capturado e enviado junto com o texto, para o modelo analisar diagramas ou código visíveis.
+5. É uma **conversa de verdade**: o entrevistador reage à sua resposta, repergunta, provoca e aprofunda — o ciclo continua enquanto você quiser.
+6. Ao clicar em **🏁 Finalizar** (ou falar "sair"), a entrevista termina e a IA gera um **feedback final** falado e em texto: visão geral, pontos fortes, pontos fracos e o que estudar.
 
 ---
 
@@ -91,19 +92,40 @@ python3 interview_arch_ai.py
 ### Tela inicial
 
 - Informe seu **nome**
-- Descreva o **problema** da entrevista
-- Clique em **Começar**
+- Escolha a **senioridade da vaga** (ajusta a profundidade e a dificuldade da entrevista)
+- Selecione a **tela a capturar** e o **microfone**
+- Descreva ou cole o **problema** da entrevista
+- Confira a conexão com o **LM Studio** e clique em **Começar entrevista**
+
+<p align="center">
+  <img src="images/home.png" alt="Tela inicial do InterviewArchAI" width="420"/>
+</p>
 
 ### Janela flutuante (durante a entrevista)
 
 Após iniciar, o app vira uma janela compacta que **fica sempre visível** no canto da tela:
 
 - O entrevistador fala e o texto aparece na janela
-- Quando for sua vez, clique no **botão do microfone** e fale — a gravação para automaticamente ao detectar silêncio
-- Screenshot da tela é capturado e o ciclo continua
+- Quando for sua vez, clique no **🎙 microfone** e fale; clique em **Pronto** para encerrar sua fala e passar a vez (a gravação **não** para sozinha no silêncio)
+- O botão **🖥** liga/desliga o envio de um **screenshot da tela** junto com a resposta (desligado = mais rápido, só texto)
+- O botão **🏁** encerra a entrevista e pede o **feedback final**
 - Arraste pela barra superior para reposicionar a janela
 
+<p align="center">
+  <img src="images/rodando.png" alt="Janela flutuante durante a entrevista" width="320"/>
+</p>
+
 > Antes de iniciar, abra o LM Studio, carregue um modelo com visão e inicie o Local Server na porta 1234.
+
+### Feedback final
+
+Ao finalizar, o **mesmo entrevistador** sai do papel de provocador e vira um mentor sênior: gera um debrief honesto e construtivo (falado e em texto) com visão geral, pontos fortes, pontos fracos e o que estudar.
+
+<p align="center">
+  <img src="images/feedback.png" alt="Tela de feedback final da entrevista" width="720"/>
+</p>
+
+> Para esta print eu não fiz a entrevista de verdade — só pedi pra ela me elogiar pra eu sair bem no screenshot. Ela não gostou nada da ideia: abriu o feedback com _"Visão geral: Você não passou"_ e _"Pontos fortes: Nenhum"_. 😅 Feedback honesto é honesto.
 
 ---
 
@@ -119,21 +141,20 @@ SCREENSHOT_MAX_DIM = 1024  # maior dimensão (px) do screenshot enviado ao model
 ```
 
 O screenshot é redimensionado (via `sips`) para que sua maior dimensão não passe de `SCREENSHOT_MAX_DIM` antes de ser enviado. Como os "tokens de visão" escalam com a resolução da imagem, esse limite é o principal fator para não estourar a janela de contexto. Diminua para `768` se ainda estourar; aumente para `1280+` se precisar de mais detalhe nos diagramas.
-ENSHOT_MAX_DIM` em `app/config.py`.
 
 ---
 
 ## Estrutura do projeto
 
 ```
-talk-system-design/
+InterviewArchAI/
 ├── app/
-│   ├── config.py               # Configurações padrão
-│   ├── core.py                 # STT, TTS, screenshots, API
+│   ├── config.py               # Configurações e prompts padrão
+│   ├── core.py                 # STT, TTS, screenshots, API, feedback final
 │   ├── gui.py                  # Interface desktop
 │   └── main.py                 # Ponto de entrada do app
-├── assets/
-│   └── app_icon_v2.png         # Logo do projeto
+├── assets/                     # Ícones do app
+├── images/                     # Screenshots usados no README
 ├── interview_arch_ai.py        # Versão CLI (terminal)
 ├── requirements.txt
 ├── scripts/
