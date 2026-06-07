@@ -98,7 +98,7 @@ python3 interview_arch_ai.py
 - Confira a conexão com o **LM Studio** e clique em **Começar entrevista**
 
 <p align="center">
-  <img src="images/home.png" alt="Tela inicial do InterviewArchAI" width="420"/>
+  <img src="images/home.png" alt="Tela inicial do InterviewArchAI" width="320"/>
 </p>
 
 ### Janela flutuante (durante a entrevista)
@@ -112,7 +112,7 @@ Após iniciar, o app vira uma janela compacta que **fica sempre visível** no ca
 - Arraste pela barra superior para reposicionar a janela
 
 <p align="center">
-  <img src="images/rodando.png" alt="Janela flutuante durante a entrevista" width="320"/>
+  <img src="images/rodando.png" alt="Janela flutuante durante a entrevista" width="260"/>
 </p>
 
 > Antes de iniciar, abra o LM Studio, carregue um modelo com visão e inicie o Local Server na porta 1234.
@@ -122,7 +122,7 @@ Após iniciar, o app vira uma janela compacta que **fica sempre visível** no ca
 Ao finalizar, o **mesmo entrevistador** sai do papel de provocador e vira um mentor sênior: gera um debrief honesto e construtivo (falado e em texto) com visão geral, pontos fortes, pontos fracos e o que estudar.
 
 <p align="center">
-  <img src="images/feedback.png" alt="Tela de feedback final da entrevista" width="720"/>
+  <img src="images/feedback.png" alt="Tela de feedback final da entrevista" width="520"/>
 </p>
 
 > Para esta print eu não fiz a entrevista de verdade — só pedi pra ela me elogiar pra eu sair bem no screenshot. Ela não gostou nada da ideia: abriu o feedback com _"Visão geral: Você não passou"_ e _"Pontos fortes: Nenhum"_. 😅 Feedback honesto é honesto.
